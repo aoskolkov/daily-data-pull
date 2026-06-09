@@ -1,0 +1,5 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:system",
+    "python.defaultInterpreterPath": "C:/Users/ao7054/AppData/Local/anaconda3/python.exe",
+    "python.terminal.activateEnvironment": false
+}
