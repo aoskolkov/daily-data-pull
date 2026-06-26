@@ -1,0 +1,755 @@
+defaults:
+  storage_root: ./data
+  output_format: parquet
+  chunk_rows: 500_000
+
+datasets:
+  # ── FX spot rates ───────────────────────────────────────────────────────────
+  - name: fx_spot
+    source: wrds_sql
+    library: comp
+    table: exrt_dly
+    fields: [datadate, fromcurd, tocurd, exratd]
+    incremental_key: datadate
+    partition_by: [year]
+    note: >
+      Compustat daily FX spot rates. fromcurd is typically GBP (anchor), not USD.
+      clean/fx_spot.py detects the anchor and converts to local/USD via cross-rate.
+
+  # ── FX forward rates (Datastream via WRDS) ─────────────────────────────────
+  # Source: tr_ds_equities.ds2fxcode joined to ds2fxrate (LSEG Datastream).
+  # 1578 rate codes; forward tenors: 1W, 1M, 3M, 6M, 9M, 1Y, 2Y, ... 20Y.
+  # Data runs 1964-12-30 to present. Currencies vs USD in either direction.
+  # Output: long format with columns exratedate, fromcurrcode, tocurrcode,
+  #         ratetypecode, midrate, bidrate, offerrate.
+  - name: fx_forward
+    source: wrds_fx
+    start: "1964-12-30"
+    incremental_key: exratedate
+    note: >
+      All FX rates (spot + all forward tenors, all currencies) from LSEG Datastream
+      via WRDS tr_ds_equities.ds2fxcode + ds2fxrate. 1578 rate codes, 1964–present.
+      Tenors: SPOT, ONFD, TNFD, SNFD, 1WFD, 2WFD, 3WFD, 1MFD–11MF, 1YFD–10YF, 12YF, 15YF, 20YF.
+      Direction varies by pair (some USD→CCY, some CCY→USD per Datastream convention).
+      clean/fx_forward.py normalises to a consistent quoting convention.
+
+  # ── WTI crude spot (Datastream commodities) ─────────────────────────────────
+  # NCLCS00 is a Datastream terminal mnemonic NOT available on WRDS (verified 2026-06-25).
+  # WRDS has WTI spot via tr_ds_comds: CRUDOIL (Cushing WTI) and EIACRWT (EIA WTI).
+  - name: ds_wti_front
+    source: datastream
+    mnemonic: CRUDOIL
+    start: "1986-01-01"
+    incremental_key: date_
+    note: >
+      WTI crude oil spot price at Cushing via Datastream commodities (tr_ds_comds).
+      Mnemonic: CRUDOIL = "Crude Oil-West Texas Intermediate Spot Cushing USD/BBL".
+      Daily. Units: USD/barrel. Cross-check vs fred_wti_spot.
+      Note: NCLCS00 (Datastream continuous contract) is NOT available on WRDS.
+
+  # ── WTI futures term structure (NYMEX nearby contracts) ────────────────────
+  # NCLCS00 continuous series is NOT available on WRDS (verified 2026-06-25).
+  # Instead, use wrds_fut adapter: builds nearby 1-12 from individual NWS* contracts
+  # in tr_ds_fut.wrds_contract_info + tr_ds_fut.wrds_fut_contract.
+  # The adapter ranks by lasttrddate per day to assign nearby position.
+  - name: ds_wti_curve
+    source: wrds_fut
+    dsmnem_prefix: NWS       # NYMEX WTI contracts (NWS{MMYY})
+    currency: USD
+    max_nearby: 12
+    price_col: settlement
+    start: "1990-01-01"
+    incremental_key: date_
+    note: >
+      NYMEX WTI crude oil futures term structure, nearby 1-12, from individual
+      contracts (NWS{MMYY}) in WRDS Datastream tr_ds_fut library.
+      Output: long format with columns date_, nearby (1-12), price, contrdate.
+      clean/oil_curve.py pivots to wide (tenor columns M1-M12) and computes
+      slope/spreads. Units: USD/barrel.
+
+  # ── Brent futures term structure (ICE nearby contracts) ─────────────────────
+  # ICE Brent individual contracts: LBZCS00-LBZCS05 are DEAD (discontinued series).
+  # The prefix for active ICE Brent individual contracts needs verification.
+  # Known dead prefix: LBZCS (ICE-BRENT CRUDE OIL NX)
+  # Candidate active prefix: search wrds_contract_info for Brent + USD.
+  # Until verified, leave dsmnem_prefix empty so adapter raises a clear error.
+  # To find: run python wrdsdl.py discover tr_ds_fut --table wrds_contract_info
+  #   then: SELECT DISTINCT LEFT(dsmnem,3), contrname FROM wrds_contract_info
+  #          WHERE UPPER(contrname) LIKE '%BRENT%' AND isocurrcode='USD' LIMIT 20
+  - name: ds_brent_curve
+    source: wrds_fut
+    dsmnem_prefix: LLC       # ICE Brent "CRUDE OIL (BRENT)" contracts, verified 2026-06-25
+    currency: USD
+    max_nearby: 12
+    price_col: settlement
+    start: "1990-01-01"
+    incremental_key: date_
+    note: >
+      ICE Brent crude oil futures term structure, nearby 1-12, from individual
+      contracts (LLC{MMYY}) in WRDS Datastream tr_ds_fut library.
+      Prefix LLC = "CRUDE OIL (BRENT)", USD, 426 contracts through 2039.
+      Alternative prefixes available: NBR (LST DAY, 319 contracts to 2034).
+      Structure mirrors ds_wti_curve. Units: USD/barrel.
+
+  # ── WTI crude (FRED — sanity check / gap fill) ─────────────────────────────
+  - name: fred_wti_spot
+    source: external
+    provider: fred
+    series_id: DCOILWTICO
+    start: "1986-01-02"
+    note: >
+      WTI crude spot price (Cushing, OK) from FRED/EIA. Daily.
+      Requires: pip install pandas-datareader
+      Use to cross-check ds_wti_front and fill gaps.
+
+  # ── Volatility ───────────────────────────────────────────────────────────────
+  # VIX family from FRED (all free, daily)
+  - name: vix
+    source: external
+    provider: fred
+    series_id: VIXCLS
+    start: "1990-01-02"
+    incremental_key: date
+    note: "CBOE VIX: 30-day risk-neutral vol of S&P 500. Daily."
+
+  # [BROKEN] VXST discontinued by CBOE 2018-03-27; FRED series no longer accessible
+  # via pandas_datareader CSV endpoint. Historical data ends 2018-03-27.
+  # To pull manually: wget https://www.cboe.com/us/options/market_statistics/historical_data/
+  # and use the file provider.
+  # - name: vix9d
+  #   source: external
+  #   provider: fred
+  #   series_id: VXST
+  #   start: "2011-01-03"
+
+  - name: vix3m
+    source: external
+    provider: fred
+    series_id: VXVCLS
+    start: "2007-12-04"
+    incremental_key: date
+    note: "CBOE 3-Month VIX (VXV / VXVCLS). Daily."
+
+  # [VERIFY] VXMT and VVIXCLS fail via pandas_datareader CSV endpoint.
+  # FRED may require API key for CBOE-licensed series, or IDs have changed.
+  # Try: curl "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VXMT" to check.
+  # Alternative: download directly from CBOE and use file provider.
+  # - name: vix6m
+  #   source: external
+  #   provider: fred
+  #   series_id: VXMT
+
+  # - name: vvix
+  #   source: external
+  #   provider: fred
+  #   series_id: VVIXCLS
+
+  # SVIX (Martin 2017) — manually downloaded file
+  # Source: William Martin's academic website (LSE faculty page)
+  # The file typically contains columns: date, svix (annualised, decimal)
+  # svix² = risk-neutral E[R²] - 1 = simple variance; a cleaner ERP lower
+  # bound than vix² because it uses simple (not log) returns.
+  # Relationship: vix² ≥ svix² always; gap ≈ risk-neutral skewness/kurtosis.
+  - name: svix
+    source: external
+    provider: file
+    path: "downloads/svix.csv"   # place Martin's file here before pulling
+    date_col: date               # [VERIFY: check actual column name in the file]
+    incremental_key: date
+    note: >
+      Martin (2017) SVIX: daily risk-neutral simple variance lower bound.
+      Download from William Martin's LSE faculty page (search "Martin SVIX data").
+      Place the file at downloads/svix.csv.
+      Verify column names with: python -c "import pandas as pd; print(pd.read_csv('downloads/svix.csv').head())"
+      Then set date_col to match the actual date column name.
+
+  # ── Inflation: CPI level (World Bank) ───────────────────────────────────────
+  - name: wb_cpi
+    source: external
+    provider: worldbank
+    indicator: FP.CPI.TOTL
+    start: "1960"
+    note: >
+      World Bank CPI index (2010=100), ~180 countries, annual.
+      Requires: pip install pandas-datareader
+      clean/inflation.py normalizes and pivots to wide.
+
+  # ── Inflation: CPI % change (World Bank) ────────────────────────────────────
+  - name: wb_inflation
+    source: external
+    provider: worldbank
+    indicator: FP.CPI.TOTL.ZG
+    start: "1960"
+    note: >
+      World Bank annual CPI inflation rate (%), ~180 countries.
+      Requires: pip install pandas-datareader
+
+  # ── Inflation: CPI monthly (OECD) ───────────────────────────────────────────
+  # [BROKEN] OECD migrated from stats.oecd.org to data-explorer.oecd.org in 2024.
+  # pandas_datareader's OECD reader hits the old endpoint (now returns 404).
+  # Fix: implement a direct SDMX REST adapter for the new OECD API.
+  # New endpoint: https://sdmx.oecd.org/public/rest/data/
+  # Dataset for CPI: OECD.SDD.STES,DSD_KEI@DF_KEI,4.0/...CPALTT01...M...
+  # - name: oecd_cpi
+  #   source: external
+  #   provider: oecd
+  #   dataset: CPI      # old ID, broken
+
+  # ── US Treasury TIC: foreign holdings of US Treasuries ───────────────────────
+  # Monthly, by country, back to 2000. Holdings in billions of USD.
+  # Released with ~45-day lag. Source: US Treasury TIC system.
+  # Covers the top ~30 holders plus an "all other" residual.
+  - name: tic_foreign_holders
+    source: tic
+    start: "2000-01-01"
+    incremental_key: date
+    note: >
+      US Treasury Major Foreign Holders of Treasury Securities.
+      Monthly, ~30 countries, USD billions, 2000–present.
+      Source: ticdata.treasury.gov mfh.txt, updated monthly.
+
+  # ── BIS central bank policy rates ───────────────────────────────────────────
+  # Daily, 39 countries (ISO2) + XM (Eurozone), from ~1946 (US) / 1990s (EM).
+  # BIS WS_CBPOL key: FREQ.REF_AREA — just 2 dimensions.
+  # Use period_format: daily so startPeriod is sent as YYYY-MM-DD (not YYYY-Q#).
+  - name: bis_cbpol
+    source: bis
+    dataflow: WS_CBPOL
+    key: "D."
+    start: "1946-01-01"
+    period_format: daily
+    incremental_key: date
+    note: >
+      BIS central bank policy rates, daily, 39 countries + Eurozone (XM).
+      Source: BIS Statistics API (stats.bis.org) dataflow WS_CBPOL.
+      Countries: AR AU BR CA CH CL CN CO CZ DK GB HK HU ID IL IN IS JP KR KW
+        MA MK MX MY NO NZ PE PH PL RO RS RU SA SE TH TR US XM ZA.
+      History: US from 1954, most G10 from 1970s–1980s, EM from 1990s–2000s.
+      clean/interest_rates.py pivots to wide (date × country ISO2).
+
+  # ── BIS international debt securities outstanding ────────────────────────────
+  # Quarterly, ~50 countries. Covers bonds and notes issued internationally,
+  # broken down by issuer country (ISSUER_RES), nationality (ISSUER_NAT), etc.
+  # Dimensions (15): FREQ.ISSUER_RES.ISSUER_NAT.ISSUER_BUS_IMM.ISSUER_BUS_ULT.
+  #   MARKET.ISSUE_TYPE.ISSUE_CUR_GROUP.ISSUE_CUR.ISSUE_OR_MAT.ISSUE_RE_MAT.
+  #   ISSUE_RATE.ISSUE_RISK.ISSUE_COL.MEASURE
+  # Key below: Q, all issuers, market=C (combined), type=A (all), all cur groups,
+  #   cur=TO1 (total all currencies), or_mat=C (combined), all remaining attrs,
+  #   measure=C (amounts outstanding). ~1,000 rows/quarter.
+  # Use python wrdsdl.py discover bis --dataflow WS_DEBT_SEC2_PUB to explore.
+  - name: bis_debt_sec
+    source: bis
+    dataflow: WS_DEBT_SEC2_PUB
+    key: Q.....C.A..TO1.C.A.A.A.A.C
+    start: "1993-01-01"
+    incremental_key: date
+    note: >
+      BIS international debt securities, all sectors, total-currency amounts outstanding,
+      quarterly. Source: BIS Statistics API (stats.bis.org) dataflow WS_DEBT_SEC2_PUB.
+      Amounts in USD millions (unit_measure=USD, unit_mult=6).
+      To narrow to government sector: use discover mode to find the ISSUER_BUS_IMM code.
+
+  # ── IMF World Economic Outlook ────────────────────────────────────────────────
+  # Biannual (April + October). ~190 countries from ~1980 + 5-year projections.
+  # Best free source for fiscal aggregates (revenue, expenditure, primary balance,
+  # gross/net debt % GDP) and macro projections.
+  # Update year/edition after each IMF release (April=1, October=2).
+  - name: imf_weo
+    source: imf_weo
+    year: 2024
+    edition: 2        # 1=April, 2=October
+    start: "1980"
+    incremental_key: date
+    subjects:
+      # GDP
+      - NGDPD        # GDP current USD (billions)
+      - NGDP_RPCH    # Real GDP growth (%)
+      # Inflation
+      - PCPIPCH      # CPI inflation (%)
+      # Fiscal  (codes as of Oct 2024 WEO; older editions used GGREV/GGEXP/GGPB)
+      - GGR_NGDP     # General govt revenue (% GDP)
+      - GGX_NGDP     # General govt total expenditure (% GDP)
+      - GGXCNL       # General govt net lending/borrowing = fiscal balance (% GDP)
+      - GGXONLB      # General govt primary net lending/borrowing (% GDP)
+      - GGXWDG       # General govt gross debt (% GDP)
+      - GGXWDN       # General govt net debt (% GDP)
+      # External
+      - BCA_NGDPD    # Current account balance (% GDP)
+      - LUR          # Unemployment rate (%)
+    note: >
+      IMF World Economic Outlook database, Oct 2024 edition.
+      Covers ~190 countries, 1980–2029 (incl. IMF projections beyond 2024).
+      Downloaded from imf.org as tab-delimited bulk file (not SDMX API).
+      Update year/edition after each IMF release (April and October).
+      File cached locally at downloads/imf_weo/ after first pull.
+
+  # ── GDP ──────────────────────────────────────────────────────────────────────
+  - name: wb_gdp_usd
+    source: external
+    provider: worldbank
+    indicator: NY.GDP.MKTP.CD
+    start: "1960"
+    note: "World Bank GDP, current USD, ~180 countries, annual."
+
+  - name: wb_gdp_growth
+    source: external
+    provider: worldbank
+    indicator: NY.GDP.MKTP.KD.ZG
+    start: "1960"
+    note: "World Bank GDP growth rate (%), constant prices, ~180 countries, annual."
+
+  - name: wb_gdp_pcap_usd
+    source: external
+    provider: worldbank
+    indicator: NY.GDP.PCAP.CD
+    start: "1960"
+    note: "World Bank GDP per capita, current USD, ~180 countries, annual."
+
+  # ── Consumption ───────────────────────────────────────────────────────────────
+  - name: wb_consumption_hh
+    source: external
+    provider: worldbank
+    indicator: NE.CON.PRVT.CD
+    start: "1960"
+    note: "World Bank household final consumption expenditure, current USD, annual."
+
+  - name: wb_consumption_govt
+    source: external
+    provider: worldbank
+    indicator: NE.CON.GOVT.CD
+    start: "1960"
+    note: "World Bank general government final consumption expenditure, current USD, annual."
+
+  # ── Investment ────────────────────────────────────────────────────────────────
+  - name: wb_investment
+    source: external
+    provider: worldbank
+    indicator: NE.GDI.FTOT.CD
+    start: "1960"
+    note: "World Bank gross fixed capital formation, current USD, annual."
+
+  # ── Trade ─────────────────────────────────────────────────────────────────────
+  - name: wb_exports
+    source: external
+    provider: worldbank
+    indicator: NE.EXP.GNFS.CD
+    start: "1960"
+    note: "World Bank exports of goods and services, current USD, annual."
+
+  - name: wb_imports
+    source: external
+    provider: worldbank
+    indicator: NE.IMP.GNFS.CD
+    start: "1960"
+    note: "World Bank imports of goods and services, current USD, annual."
+
+  # ── Capital flows ─────────────────────────────────────────────────────────────
+  - name: wb_current_account
+    source: external
+    provider: worldbank
+    indicator: BN.CAB.XOKA.CD
+    start: "1960"
+    note: "World Bank current account balance, current USD, annual."
+
+  - name: wb_fdi_inflows
+    source: external
+    provider: worldbank
+    indicator: BX.KLT.DINV.CD.WD
+    start: "1960"
+    note: "World Bank FDI net inflows, current USD, annual."
+
+  - name: wb_fdi_outflows
+    source: external
+    provider: worldbank
+    indicator: BM.KLT.DINV.CD.WD
+    start: "1960"
+    note: "World Bank FDI net outflows, current USD, annual."
+
+  - name: wb_portfolio_equity
+    source: external
+    provider: worldbank
+    indicator: BN.KLT.PTXL.CD
+    start: "1960"
+    note: "World Bank portfolio equity net inflows, current USD, annual."
+
+  # ── Government fiscal aggregates (World Bank) ─────────────────────────────────
+  # Note: wb_consumption_govt (NE.CON.GOVT.CD) is the G in C+I+G+NX and covers
+  # only ~15-20% of total fiscal expenditure. These GC.* indicators are the
+  # actual fiscal aggregates from government finance statistics.
+  - name: wb_govt_revenue
+    source: external
+    provider: worldbank
+    indicator: GC.REV.TOTL.CD
+    start: "1990"
+    note: "World Bank central government revenue, current USD, annual."
+
+  - name: wb_govt_revenue_pct
+    source: external
+    provider: worldbank
+    indicator: GC.REV.TOTL.GD.ZS
+    start: "1990"
+    note: "World Bank central government revenue (% GDP), annual."
+
+  - name: wb_govt_expenditure
+    source: external
+    provider: worldbank
+    indicator: GC.XPN.TOTL.CD
+    start: "1990"
+    note: "World Bank central government expenditure, current USD, annual."
+
+  - name: wb_govt_expenditure_pct
+    source: external
+    provider: worldbank
+    indicator: GC.XPN.TOTL.GD.ZS
+    start: "1990"
+    note: "World Bank central government expenditure (% GDP), annual."
+
+  - name: wb_fiscal_balance_pct
+    source: external
+    provider: worldbank
+    indicator: GC.BAL.CASH.GD.ZS
+    start: "1990"
+    note: "World Bank cash surplus/deficit (% GDP), central government, annual."
+
+  - name: wb_govt_debt_pct
+    source: external
+    provider: worldbank
+    indicator: GC.DOD.TOTL.GD.ZS
+    start: "1990"
+    note: "World Bank central government debt (% GDP), annual."
+
+  # ── IMF BOP: financial account flows ─────────────────────────────────────────
+  # Before first pull, verify indicator codes:
+  #   python wrdsdl.py discover imf --dataset BOP
+  # The five standard components (BPM6) with assets/liabilities split.
+  # Values in USD (UNIT_MULT applied automatically by adapter).
+  - name: imf_bop
+    source: imf
+    dataset: BOP
+    frequency: A
+    start: "1980"
+    incremental_key: date
+    indicators:
+      # Direct investment
+      - BFDI       # net
+      - BFDIA      # assets (outward)
+      - BFDIL      # liabilities (inward)
+      # Portfolio — equity
+      - BFPIE      # net
+      - BFPIEA     # assets
+      - BFPIEL     # liabilities
+      # Portfolio — debt
+      - BFPID      # net
+      - BFPIDA     # assets
+      - BFPIDL     # liabilities
+      # Other investment (banking/loans/deposits)
+      - BFOI       # net
+      - BFOIA      # assets
+      - BFOIL      # liabilities
+      # Reserve assets
+      - BFRA       # net acquisition
+    note: >
+      IMF BOP financial account flows, annual, ~180 countries.
+      [VERIFY codes]: python wrdsdl.py discover imf --dataset BOP
+      Look for the INDICATOR dimension codelist.
+
+  # ── IMF IIP: international investment position (stocks) ───────────────────────
+  # Before first pull, verify indicator codes:
+  #   python wrdsdl.py discover imf --dataset IIP
+  - name: imf_iip
+    source: imf
+    dataset: IIP
+    frequency: A
+    start: "1980"
+    incremental_key: date
+    indicators:
+      # Direct investment
+      - IADIP       # assets
+      - ILDIP       # liabilities
+      # Portfolio — equity
+      - IAPIE       # assets
+      - ILPIE       # liabilities
+      # Portfolio — debt
+      - IAPID       # assets
+      - ILPID       # liabilities
+      # Other investment
+      - IAOI        # assets
+      - ILOI        # liabilities
+      # Reserve assets
+      - IARA        # total
+    note: >
+      IMF IIP (International Investment Position) stocks, annual, ~180 countries.
+      [VERIFY codes]: python wrdsdl.py discover imf --dataset IIP
+
+  # ── IMF CPIS: bilateral portfolio investment positions ────────────────────────
+  - name: imf_cpis
+    source: imf
+    dataset: CPIS
+    frequency: A
+    start: "2001"
+    incremental_key: date
+    note: >
+      IMF Coordinated Portfolio Investment Survey.
+      Bilateral: reporter × counterpart × instrument (equity, LT debt, ST debt).
+      ~75 reporters × ~200 counterparts. Annual, 2001–present.
+      No indicator list needed — adapter pulls all series.
+
+  # ── IMF CDIS: bilateral FDI positions ─────────────────────────────────────────
+  - name: imf_cdis
+    source: imf
+    dataset: CDIS
+    frequency: A
+    start: "2009"
+    incremental_key: date
+    note: >
+      IMF Coordinated Direct Investment Survey.
+      Bilateral: reporter × counterpart, inward and outward positions.
+      Annual, 2009–present.
+      No indicator list needed — adapter pulls all series.
+
+  # ── Government bond yields 10Y (Datastream economic series) ─────────────────
+  # Source: tr_ds_econ.wrds_ecoinfo + ecodata (IMF IFS + Datastream national sources).
+  # Frequency: monthly (MONT). Units: percent per annum.
+  # Most series are end-of-period (EP) 10-year benchmark yields.
+  # Notes on non-standard maturities:
+  #   BDGBOND.  Germany  9-10 years (ends 2019-09 — post-euro, Bund issuance slowed)
+  #   UKMEDYLD  UK gilt  average redemption yield on 10-yr stock (ends 2019-09)
+  #   BGGBOND.  Belgium  6-year-and-over
+  #   LVGBOND.  Latvia   5-year treasury bond
+  #   KOGBOND.  Korea    3-year Treasury bond (most liquid KRW benchmark)
+  #   MXGBOND.  Mexico   UDIBONO (inflation-linked) 10Y
+  - name: ds_bond_yields_10y
+    source: wrds_ds_econ
+    start: "1950-01-01"
+    incremental_key: date_
+    mnemonics:
+      # United States
+      - USTRCN10   # Treasury constant maturity 10Y (1953–present)
+      # United Kingdom
+      - UKMEDYLD   # 10Y gilt average redemption yield (1963–2019)
+      # Euro area
+      - BDGBOND.   # Germany 9-10Y govt bond (1957–2019)
+      - FRGBOND.   # France govt guaranteed bond yield (EP)
+      - ITGBOND.   # Italy Rendistato gross yield (EP)
+      - ESGBOND.   # Spain 10Y central govt bond yield
+      - NLGBOND.   # Netherlands 10Y central govt bond
+      - BGGBOND.   # Belgium central govt bond 6Y+ yield
+      - PTGBOND.   # Portugal 10Y benchmark bond (EP)
+      - GRGBOND.   # Greece 10Y benchmark bond (EP)
+      - OEGBOND.   # Austria 10Y govt bond
+      - FNGBOND.   # Finland 10Y govt bond (monthly avg)
+      - IRGBOND.   # Ireland 10Y benchmark bond (EP)
+      # Nordic / non-euro Europe
+      - DKGBOND.   # Denmark 10Y central govt bond (EP)
+      - SDGBOND.   # Sweden 10Y govt bond
+      - NWGBOND.   # Norway 10Y govt benchmark bond (EP)
+      - SWGBOND.   # Switzerland confederation bond 10Y
+      - ICGBOND.   # Iceland 10Y treasury bond (EP)
+      # Other Europe
+      - HNGBOND.   # Hungary 10Y benchmark bond (EP)
+      - CZGBOND.   # Czech Republic 10Y long-term bond (EP)
+      - POGBOND.   # Poland 10Y govt bond (EP)
+      - RMGBOND.   # Romania 10Y govt bond (EP)
+      - RSGBOND.   # Russia 10Y govt bond (EP)
+      # Asia-Pacific
+      - JPGBOND.   # Japan 10Y interest-bearing govt bond (EP)
+      - AUGBOND.   # Australia 10Y Commonwealth govt bond
+      - NZGBOND.   # New Zealand 10Y govt bond 2nd market
+      - KOGBOND.   # Korea 3Y treasury bond (most liquid KRW benchmark)
+      - CHGBOND.   # China 10Y govt bond (EP)
+      - INGBOND.   # India 10Y treasury bond
+      - TWGBD10Y   # Taiwan 10Y govt bond (EP)
+      - HKGBOND.   # Hong Kong 10Y govt bond
+      - MYGBOND.   # Malaysia 10Y govt bond
+      - SPGBOND.   # Singapore 10Y govt bond (EP)
+      - THGBOND.   # Thailand 10Y govt bond
+      - PHGBOND.   # Philippines 10Y govt bond (EP)
+      - PKGBOND.   # Pakistan 10Y govt bond
+      # Americas (ex-US)
+      - CNGBOND.   # Canada 10Y+ govt bond (EP)
+      - BRGBOND.   # Brazil 10Y govt bond (EP)
+      - MXGBOND.   # Mexico UDIBONO 10Y (inflation-linked)
+      # EMEA
+      - TKGBOND.   # Turkey 10Y govt bond (EP)
+      - EYGBOND.   # Egypt 10Y govt bond (EP)
+    note: >
+      10-year government bond yields from LSEG Datastream via WRDS tr_ds_econ.
+      Monthly, end-of-period unless noted. Units: percent per annum.
+      Not all series run to present: BDGBOND./UKMEDYLD end 2019-09 (Datastream
+      discontinued; use alternative sources for current DE/UK yields if needed).
+      clean/interest_rates.py maps mnemonics to ISO2 country codes and pivots wide.
+
+  # ── Precious & base metals (Datastream commodities) ───────────────────────────
+  # Source: tr_ds_comds.wrds_cmdy_info + wrds_cmdy_data via wrds_ds_comds adapter.
+  # Precious metals (USD/troy oz): gold (1968), silver (1970/2012), platinum (1976),
+  #   palladium (1987).
+  # LME base metals (USD/MT): aluminium 99.7% (LAHCASH, 1988), aluminium alloy
+  #   (LADCASH, 1993), lead (LEDCASH, 1993).
+  # Note: LME cash prices for copper, zinc, nickel, tin are NOT in tr_ds_comds —
+  #   need to locate in tr_ds_equities or tr_ds_fut (TODO). Use LCP15MT/LZZ15MT/
+  #   LNI15MT (15-month forwards, USD) as proxies if needed.
+  # SLVCASH (1970–2014, cents/troy oz) overlaps SILVPM$ (2012–present, USD/troy oz).
+  - name: ds_metals
+    source: wrds_ds_comds
+    start: "1968-01-01"
+    incremental_key: date_
+    mnemonics:
+      # Precious metals
+      - GOLDBLN    # Gold Bullion LBM USD/troy oz (1968–present)
+      - SLVCASH    # Silver Fix LBM Cash USD cents/troy oz (1970–2014, dead)
+      - SILVPM$    # Silver Perth Mint USD/troy oz (2012–present)
+      - PLATFRE    # Platinum London Free Market USD/troy oz (1976–present)
+      - PALLADM    # Palladium USD/troy oz (1987–present)
+      # LME base metals (confirmed in tr_ds_comds, USD/MT)
+      - LAHCASH    # LME Aluminium 99.7% Cash USD/MT (1988–present)
+      - LADCASH    # LME Aluminium Alloy Cash USD/MT (1993–present)
+      - LEDCASH    # LME Lead Cash USD/MT (1993–present)
+    note: >
+      Precious metals (gold, silver, platinum, palladium) and LME base metals
+      from LSEG Datastream via WRDS tr_ds_comds. All USD except SLVCASH which is
+      cents/troy oz. Silver has two overlapping series: SLVCASH (1970–2014 dead)
+      and SILVPM$ (2012–present active). LME copper, zinc, nickel, and tin cash
+      prices are NOT in tr_ds_comds; see TODO in config.
+
+  # ── Energy commodities (Datastream) ──────────────────────────────────────────
+  # Brent spot: OILBREN = BFO Month 1 USD/barrel (1970–present, 13,443 obs).
+  # Nat gas: NATLGAS = Henry Hub USD/MMBTU (1993–2020, dead 2020). Active UK
+  #   NBP gas is NATBGAS (GBP, ICE). No active USD Henry Hub spot in comds.
+  # Heating oil: EIAHONY = NY Harbor Spot FOB USD/gallon (1986–present).
+  # Gasoline: GSUNLRG = Unleaded Regular Non-Oxy NY USD/gallon (1983–present).
+  - name: ds_energy_comds
+    source: wrds_ds_comds
+    start: "1970-01-01"
+    incremental_key: date_
+    mnemonics:
+      - OILBREN    # Brent crude BFO Month 1 USD/barrel (1970–present)
+      - NATLGAS    # Henry Hub natural gas USD/MMBTU (1993–2020 dead)
+      - EIAHONY    # Heating oil No.2 NYH Spot FOB USD/gallon (1986–present)
+      - GSUNLRG    # Gasoline unleaded regular NY USD/gallon (1983–present)
+    note: >
+      Energy commodity spot prices from LSEG Datastream via WRDS tr_ds_comds.
+      WTI crude is separate (ds_wti_front, ds_wti_curve). NATLGAS ends 2020-09
+      (dead series); no active USD Henry Hub in tr_ds_comds after that date.
+
+  # ── Agricultural commodities (Datastream) ────────────────────────────────────
+  # Grains: wheat (WHEATMP, spring Minneapolis, 1979), corn (CORNUS2, 1979),
+  #   soybeans (SOYBEAN, 1979) — all USD/bushel.
+  # Softs: coffee (COFDICA, ICO composite daily, 1986, USD/lb), cocoa (COCINUS,
+  #   ICCO daily USD/MT, 1985), sugar (WSUGDLY, ISA daily USD/lb, 1985),
+  #   cotton (COTTONM, Memphis USD/lb, 1980).
+  - name: ds_agri_comds
+    source: wrds_ds_comds
+    start: "1979-01-01"
+    incremental_key: date_
+    mnemonics:
+      - WHEATMP    # Wheat spring Minneapolis USD/bushel (1979–present)
+      - CORNUS2    # Corn No.2 yellow central Illinois USD/bushel (1979–present)
+      - SOYBEAN    # Soybeans No.1 yellow USD/bushel (1979–present)
+      - COFDICA    # Coffee ICO Composite daily USD/lb (1986–present)
+      - COCINUS    # Cocoa ICCO daily price USA USD/MT (1985–present)
+      - WSUGDLY    # Raw sugar ISA daily price USD/lb (1985–present)
+      - COTTONM    # Cotton 1-1/16 STR Low-Middling Memphis USD/lb (1980–present)
+    note: >
+      Agricultural commodity spot prices from LSEG Datastream via WRDS tr_ds_comds.
+      Grains are USD/bushel; softs are USD/lb or USD/MT as noted.
+
+  # ── Commodity indices (Datastream) ────────────────────────────────────────────
+  # S&P GSCI family (1969–present): spot, total return, excess return variants.
+  # Refinitiv CRB Equal Weight (NYFECRB, 1956–2021, dead).
+  # Bloomberg Commodity Index (BCOM) not found in tr_ds_comds; may require
+  # direct Datastream access or separate download.
+  - name: ds_comdy_indices
+    source: wrds_ds_comds
+    start: "1956-01-01"
+    incremental_key: date_
+    mnemonics:
+      - CGSYSPT    # S&P GSCI Commodity Spot Index (1969–present)
+      - GSCITOT    # S&P GSCI Commodity Total Return (1969–present)
+      - GSCIEXR    # S&P GSCI Commodity Excess Return (1969–present)
+      - GSNESPT    # S&P GSCI Non-Energy Spot (1969–present)
+      - GSNETOT    # S&P GSCI Non-Energy Total Return (1969–present)
+      - GSAGSPT    # S&P GSCI Agriculture Spot (1969–present)
+      - GSAGTOT    # S&P GSCI Agriculture Total Return (1969–present)
+      - GSPMSPT    # S&P GSCI Precious Metal Spot (1973–present)
+      - GSPMTOT    # S&P GSCI Precious Metal Total Return (1973–present)
+      - NYFECRB    # Refinitiv CRB Equal Weight Index (1956–2021, dead)
+    note: >
+      Commodity price indices from LSEG Datastream via WRDS tr_ds_comds.
+      S&P GSCI family has three return variants: Spot (price index only),
+      Excess Return (futures roll, no T-bill), Total Return (ER + T-bill).
+      CRB series dead 2021-02; Bloomberg Commodity Index (BCOM) not available
+      in tr_ds_comds.
+
+  # ── Country equity index panel (Datastream) ───────────────────────────────────
+  # Source: tr_ds_equities.ds2equityindex + ds2indexdata via wrds_ds_index adapter.
+  # ~42 major markets. pi_ = price index (ex-dividend), ri = return index (total).
+  # Index selection: active series with longest history per country-code region,
+  # verified 2026-06-25 from ds2equityindex + ds2indexdata.
+  # Notes on known caveats:
+  #   GB: FTATNOF = FTSE Total Non-Financial (sub-index); FTSE All-Share TBD.
+  #   FR: FTEFRFY = FTSEUR1ST 300 France (JPY-denominated); EUR version TBD.
+  #   BR: D2BRFS$ = DJGL Brazil Financial Services; Bovespa (BOVESPA) TBD.
+  #   PH: PSEMINE = Philippine SE Mining & Oil sub-index; PSEi composite TBD.
+  - name: ds_equity_indices
+    source: wrds_ds_index
+    start: "1950-01-01"
+    incremental_key: valuedate
+    fields: [pi_, ri]
+    mnemonics:
+      # Developed Markets — Americas
+      - DJINDUS    # US: Dow Jones Industrials (1950–present, USD)
+      - TTOCOMP    # Canada: S&P/TSX Composite (1950–present, CAD)
+      # Developed Markets — Europe
+      - DAXINDX    # Germany: DAX Performance (1964–present, EUR)
+      - FTATNOF    # UK: FTSE Total Non-Financial (1964–present, GBP)
+      - FTEFRFY    # France: FTSEUR1ST 300 France (1985–present, JPY)
+      - FITMISE    # Italy: FTSE Italia MIB Storico (1975–present, EUR)
+      - MADRIDI    # Spain: Madrid SE General IGBM (1974–present, EUR)
+      - AMSTEOE    # Netherlands: AEX Index (1983–present, EUR)
+      - BRUSIDX    # Belgium: BEL All Share (1980–present, EUR)
+      - OMXAFGX    # Sweden: OMX Affarsvarlden General (1980–present, SEK)
+      - FTENOKE    # Norway: FTSEUR1ST 300 Norway EUR (1985–present, EUR)
+      - FTEDKKE    # Denmark: FTSEUR1ST 300 Denmark EUR (1985–present, EUR)
+      - WIFINDL    # Finland: FTSE Finland (1987–present, EUR)
+      - FTECHFY    # Switzerland: FTSEUR1ST 300 Switzerland (1985–present, JPY)
+      - WIASTR$    # Austria: FTSE Austria (1981–present, USD)
+      - POPSIGN    # Portugal: PSI All-Share (1988–present, EUR)
+      - GRAGENL    # Greece: ATHEX Composite (1988–present, EUR)
+      - ISEQUIT    # Ireland: ISEQ All Share (1983–present, EUR)
+      # Developed Markets — Asia-Pacific
+      - JAPDOWA    # Japan: Nikkei 225 (1950–present, JPY)
+      - AUSTOLD    # Australia: ASX All Ordinaries (1971–present, AUD)
+      - WINZEAL    # New Zealand: FTSE New Zealand (1981–present, NZD)
+      - HNGKNGI    # Hong Kong: Hang Seng (1964–present, HKD)
+      - WISNGP$    # Singapore: FTSE W Singapore USD (1981–present, USD)
+      - ISTGENS    # Israel: Tel Aviv SE General (1984–present, ILS)
+      # Emerging Markets — Asia
+      - CHSCOMP    # China: Shanghai SE Composite (1990–present, CNY)
+      - IBOMSEN    # India: BSE Sensex (1979–present, INR)
+      - KORCOMP    # South Korea: KOSPI (1974–present, KRW)
+      - TAIWGHT    # Taiwan: TAIEX Weighted (1971–present, TWD)
+      - FBMKLCI    # Malaysia: FTSE Bursa KLCI (1980–present, MYR)
+      - BNGKSET    # Thailand: Bangkok SET (1975–present, THB)
+      - JAKCOMP    # Indonesia: IDX Composite (1983–present, IDR)
+      - PKSE100    # Pakistan: Karachi SE 100 (1988–present, PKR)
+      - HCMNVNE    # Vietnam: Ho Chi Minh SE (2000–present, VND)
+      # Emerging Markets — Latin America
+      - WIMXCOL    # Mexico: FTSE W Mexico (1981–present, MXN)
+      - D2BRFS$    # Brazil: DJGL Brazil Financial Services USD (note: not Bovespa)
+      - ARGMERV    # Argentina: S&P Merval (1989–present, ARS)
+      - IGPAGEN    # Chile: S&P/CLX IGPA (1987–present, CLP)
+      # Emerging Markets — EMEA
+      - EGHREFG    # Egypt: EFG Index (1993–present, EGP)
+      - NSEINDX    # Kenya: NSE20 (1990–present, KES)
+      - IFGDNG$    # Nigeria: S&P Nigeria BMI USD (1995–present)
+      - WISAFRL    # South Africa: FTSE South Africa (1981–present, ZAR)
+      - TRKISTB    # Turkey: BIST National 100 (1988–present, TRY)
+      - WIRUSSL    # Russia: FTSE Russia USD (1997–2024)
+      - WIPLNDL    # Poland: FTSE Poland PLN (1993–present)
+      - BUXINDX    # Hungary: Budapest BUX (1991–present, HUF)
+      - SBECZRL    # Czech Republic: S&P Czech Republic CZK (1994–present)
+      - IFGDSBL    # Saudi Arabia: S&P Saudi Arabia BMI SAR (1997–present)
+    note: >
+      Country equity price (pi_) and total return (ri) indices from LSEG Datastream
+      via WRDS tr_ds_equities. Selection: active index with longest history per country.
+      See inline comments for currency and known caveats (GB, FR, BR, PH).
