@@ -1,9 +1,9 @@
-"""
+﻿"""
 Clean script for US Treasury TIC Major Foreign Holders data.
 
 Input:  data/tic_foreign_holders/
-Output: output/tic_holdings_wide.{parquet,csv}   — date × country (billions USD)
-        output/tic_meta.csv
+Output: macrodata/tic_holdings_wide.{parquet,csv}   — date × country (billions USD)
+        macrodata/tic_meta.csv
 
 Source: mfhhis01.txt (2000–present historical archive) + mfh.txt (rolling current).
 Holdings in billions USD. ~57 countries, monthly.

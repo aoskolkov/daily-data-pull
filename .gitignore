@@ -1,6 +1,6 @@
-# ── Raw pulled data (large Parquet files, not tracked) ───────────────────────
+﻿# ── Raw pulled data (large Parquet files, not tracked) ───────────────────────
 data/
-output/
+macrodata/
 downloads/
 
 # ── Python ────────────────────────────────────────────────────────────────────

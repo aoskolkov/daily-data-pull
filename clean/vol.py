@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean VIX term structure and SVIX data.
 
 VIX sources (FRED, daily):
@@ -17,9 +17,9 @@ percentage points to match the VIX convention, but prints both so you can verify
 
 Output
 ------
-  output/vol/vol_daily.parquet    wide: (date, vix, vix9d, vix3m, vix6m, vvix, svix)
-  output/vol/vol_daily.csv
-  output/vol/vol_long.parquet     long: (date, series, value)
+  macrodata/vol/vol_daily.parquet    wide: (date, vix, vix9d, vix3m, vix6m, vvix, svix)
+  macrodata/vol/vol_daily.csv
+  macrodata/vol/vol_long.parquet     long: (date, series, value)
 
 Usage
 -----
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pandas as pd
 
-DEFAULT_OUTPUT = "output/vol"
+DEFAULT_OUTPUT = "macrodata/vol"
 STORAGE_ROOT = "data"
 
 # (dataset_name, output column name)

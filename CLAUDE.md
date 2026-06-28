@@ -1,4 +1,4 @@
-# CLAUDE.md — AI helper instructions
+﻿# CLAUDE.md — AI helper instructions
 
 This file gives an AI assistant the context needed to work in this repo without re-deriving the architecture from scratch.
 
@@ -6,7 +6,7 @@ This file gives an AI assistant the context needed to work in this repo without 
 
 ## What this repo does
 
-Config-driven pipeline: download financial/macro data from WRDS, FRED, and World Bank → store as raw Parquet in `data/` → clean/pivot to wide format in `output/`. Entry point is `python wrdsdl.py <subcommand>`.
+Config-driven pipeline: download financial/macro data from WRDS, FRED, and World Bank → store as raw Parquet in `data/` → clean/pivot to wide format in `macrodata/`. Entry point is `python wrdsdl.py <subcommand>`.
 
 ---
 
@@ -20,7 +20,7 @@ src/adapters/<name>.py    ← one adapter per source type; each exports pull(con
 src/connection.py         ← WRDS connection with monkey-patched input() for non-interactive auth
 src/storage.py            ← writes Parquet with Hive partitioning; read back with pd.read_parquet(dir)
 src/state.py              ← watermark load/save (max date from last pull, stored as JSON)
-clean/<name>.py           ← reads data/, writes output/; standalone scripts, no src/ imports
+clean/<name>.py           ← reads data/, writes macrodata/; standalone scripts, no src/ imports
 ```
 
 **Data flow:**
@@ -161,7 +161,7 @@ wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= 
 
 - Read from `data/<dataset_name>/` with `pd.read_parquet(Path("data") / name)`
 - Normalize dates: `pd.to_datetime(df["date_col"]).dt.normalize()`
-- Write to `output/<family>/` with both `.parquet` (always) and `.csv` (unless `--no-csv`)
+- Write to `macrodata/<family>/` with both `.parquet` (always) and `.csv` (unless `--no-csv`)
 - Wide format: `df.pivot(index="date", columns="id_col", values="value_col")`
 - Duplicate (date, id) rows: `groupby(...).last()` before pivot — storage may produce them across Parquet partition boundaries
 - Gracefully skip missing datasets (print a message, don't crash)
@@ -171,8 +171,8 @@ wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= 
 
 ## Output conventions
 
-- Wide files: `output/<family>/<name>_wide.parquet` — rows=dates, cols=assets/countries
-- Long files: `output/<family>/<name>_long.parquet` — rows=(date, id, value)
-- Metadata: `output/<family>/<name>_meta.csv` — id → description/currency/country
+- Wide files: `macrodata/<family>/<name>_wide.parquet` — rows=dates, cols=assets/countries
+- Long files: `macrodata/<family>/<name>_long.parquet` — rows=(date, id, value)
+- Metadata: `macrodata/<family>/<name>_meta.csv` — id → description/currency/country
 - Country panels: columns use **local mnemonic** (e.g. `DJINDUS`, `JAPDOWA`); `equity_meta.csv` maps these to region codes and currency
-- FX forward: by-tenor wide files in `output/fx_forward/by_tenor/{tenor}_wide.parquet`
+- FX forward: by-tenor wide files in `macrodata/fx_forward/by_tenor/{tenor}_wide.parquet`

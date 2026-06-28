@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean oil price data from raw downloads.
 
 Sources
@@ -11,10 +11,10 @@ Cleaning tasks: normalize column names, standardize dates, optional merge.
 
 Output
 ------
-  output/oil/ds_wti_front.parquet    Datastream series (long: date, price_usd_bbl)
-  output/oil/fred_wti_spot.parquet   FRED series (long: date, price_usd_bbl)
-  output/oil/oil_merged.parquet      Both merged on date (--merge)
-  output/oil/oil_merged.csv          CSV version of merged (--merge)
+  macrodata/oil/ds_wti_front.parquet    Datastream series (long: date, price_usd_bbl)
+  macrodata/oil/fred_wti_spot.parquet   FRED series (long: date, price_usd_bbl)
+  macrodata/oil/oil_merged.parquet      Both merged on date (--merge)
+  macrodata/oil/oil_merged.csv          CSV version of merged (--merge)
 
 Usage
 -----
@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pandas as pd
 
-DEFAULT_OUTPUT = "output/oil"
+DEFAULT_OUTPUT = "macrodata/oil"
 
 DS_INPUT = "data/ds_wti_front"
 FRED_INPUT = "data/fred_wti_spot"

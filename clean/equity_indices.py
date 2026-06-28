@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean Datastream country equity index panel to wide format.
 
 Source
@@ -11,9 +11,9 @@ ri  = return index (total return including dividends)
 
 Output
 ------
-  output/equity_indices/equity_pi_wide.parquet / .csv   date × mnemonic, price index
-  output/equity_indices/equity_ri_wide.parquet / .csv   date × mnemonic, return index
-  output/equity_indices/equity_meta.csv                 mnemonic → country/currency/description
+  macrodata/equity_indices/equity_pi_wide.parquet / .csv   date × mnemonic, price index
+  macrodata/equity_indices/equity_ri_wide.parquet / .csv   date × mnemonic, return index
+  macrodata/equity_indices/equity_meta.csv                 mnemonic → country/currency/description
 
 Usage
 -----
@@ -30,7 +30,7 @@ from pathlib import Path
 import pandas as pd
 
 DEFAULT_STORAGE = "data"
-DEFAULT_OUTPUT  = "output/equity_indices"
+DEFAULT_OUTPUT  = "macrodata/equity_indices"
 DATASET_NAME    = "ds_equity_indices"
 
 

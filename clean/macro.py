@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean macro data from World Bank raw downloads.
 
 Produces two outputs per indicator (wide country × year) plus a combined
@@ -21,9 +21,9 @@ Sources (all World Bank, annual, ~180 countries)
 
 Outputs
 -------
-  output/macro/wide/wb_gdp_usd.csv          one file per indicator (year × iso3c)
-  output/macro/panel/macro_panel.parquet    long panel (year, iso3c, country_name, var, value)
-  output/macro/panel/macro_panel_wide.csv   wide panel (year, iso3c, country_name, gdp_usd, ...)
+  macrodata/macro/wide/wb_gdp_usd.csv          one file per indicator (year × iso3c)
+  macrodata/macro/panel/macro_panel.parquet    long panel (year, iso3c, country_name, var, value)
+  macrodata/macro/panel/macro_panel_wide.csv   wide panel (year, iso3c, country_name, gdp_usd, ...)
 
 Usage
 -----
@@ -41,7 +41,7 @@ from pathlib import Path
 import pandas as pd
 
 STORAGE_ROOT = "data"
-DEFAULT_OUTPUT = "output/macro"
+DEFAULT_OUTPUT = "macrodata/macro"
 
 # dataset_name -> short column name used in the panel
 INDICATORS: dict[str, str] = {

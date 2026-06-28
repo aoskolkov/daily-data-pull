@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean inflation data from raw downloads.
 
 Sources
@@ -9,12 +9,12 @@ Sources
 
 Outputs
 -------
-  output/inflation/wb_cpi_wide.parquet      dates × countries (CPI level, annual)
-  output/inflation/wb_cpi_wide.csv
-  output/inflation/wb_inflation_wide.parquet dates × countries (inflation %, annual)
-  output/inflation/wb_inflation_wide.csv
-  output/inflation/oecd_cpi_wide.parquet    dates × countries (CPI level, monthly)
-  output/inflation/oecd_cpi_wide.csv
+  macrodata/inflation/wb_cpi_wide.parquet      dates × countries (CPI level, annual)
+  macrodata/inflation/wb_cpi_wide.csv
+  macrodata/inflation/wb_inflation_wide.parquet dates × countries (inflation %, annual)
+  macrodata/inflation/wb_inflation_wide.csv
+  macrodata/inflation/oecd_cpi_wide.parquet    dates × countries (CPI level, monthly)
+  macrodata/inflation/oecd_cpi_wide.csv
 
 All wide outputs: rows = dates, columns = ISO3 country codes (iso3c).
 
@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pandas as pd
 
-DEFAULT_OUTPUT = "output/inflation"
+DEFAULT_OUTPUT = "macrodata/inflation"
 
 WB_CPI_INPUT = "data/wb_cpi"
 WB_INF_INPUT = "data/wb_inflation"

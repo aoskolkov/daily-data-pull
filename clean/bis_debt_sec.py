@@ -1,10 +1,10 @@
-"""
+﻿"""
 Clean script for BIS international debt securities data.
 
 Input:  data/bis_debt_sec/
-Output: output/bis_debt_sec_by_nat_wide.{parquet,csv}   — by issuer nationality
-        output/bis_debt_sec_by_res_wide.{parquet,csv}   — by issuer residence
-        output/bis_debt_sec_meta.csv
+Output: macrodata/bis_debt_sec_by_nat_wide.{parquet,csv}   — by issuer nationality
+        macrodata/bis_debt_sec_by_res_wide.{parquet,csv}   — by issuer residence
+        macrodata/bis_debt_sec_meta.csv
 
 The BIS data has two key country dimensions:
   issuer_res  — country where the issuer is resident
