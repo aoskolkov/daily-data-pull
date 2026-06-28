@@ -252,6 +252,16 @@ datasets:
       all bank types. Use discover mode to explore liability-side (C→L) or specific
       counterpart breakdown (5J→specific country code).
 
+  # ── MSCI Standard country equity indices ─────────────────────────────────────
+  # Monthly, USD gross total return + price index levels.
+  # 45 countries (Russia excluded — MSCI suspended Feb 2022; endpoint returns HTTP 500).
+  # Data via MSCI's public webapp endpoint (no API key required).
+  - name: msci_indices
+    source: msci_web
+    start: "1990-01-01"
+    frequency: M
+    incremental_key: date
+
   # ── IMF World Economic Outlook ────────────────────────────────────────────────
   # Biannual (April + October). ~190 countries from ~1980 + 5-year projections.
   # Best free source for fiscal aggregates (revenue, expenditure, primary balance,

@@ -47,3 +47,9 @@ densities/
 
 # ── Legacy / large binary data files ──────────────────────────────────────────
 old_data/
+
+# ── Externally sourced data (not pulled by pipeline) ──────────────────────────
+msci/
+research_availability.py
+research_availability.png
+research_availability_detail.png
