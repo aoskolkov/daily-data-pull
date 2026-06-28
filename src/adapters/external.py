@@ -169,7 +169,7 @@ def _pull_file(config: dict, watermark=None) -> pd.DataFrame:
       encoding   file encoding for CSV (default: utf-8)
 
     Use this for datasets distributed as file downloads rather than APIs
-    (e.g. Martin 2017 SVIX, BIS locational banking statistics, etc.).
+    (e.g. BIS locational banking statistics, custom CSV exports, etc.).
     """
     from pathlib import Path as _Path
 
