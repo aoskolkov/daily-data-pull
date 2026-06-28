@@ -36,7 +36,7 @@ Thumbs.db
 *.swp
 *.swo
 .idea/
-.vscode/
+.vscode/settings.json
 *.code-workspace
 
 # ── Temporary / scratch files ─────────────────────────────────────────────────
@@ -44,3 +44,6 @@ Thumbs.db
 *.bak
 *.log
 densities/
+
+# ── Legacy / large binary data files ──────────────────────────────────────────
+old_data/
