@@ -207,7 +207,6 @@ Parquet preserves column dtypes (dates stay dates, floats stay floats). Each `.p
 - **IMF datasets** (imf_bop, imf_iip, imf_cpis, imf_cdis) require access to `dataservices.imf.org`. This is blocked on some institutional networks. They work fine on unrestricted connections.
 - **Bloomberg Commodity Index (BCOM)** not found in `tr_ds_comds`. Use S&P GSCI (`CGSYSPT`) or CRB (`NYFECRB`) as alternatives.
 - **Brazil equity** (`D2BRFS$`) is the DJGL Brazil Financial Services sub-index, not the Bovespa (IBOVESPA). Swap this mnemonic in `config/datasets.yaml` if you need the headline index.
-- **SVIX** (Martin 2017) requires a manual file download from William Martin's LSE faculty page. Place it at `downloads/svix.csv` before pulling.
 - **TIC country list changes over time**: `mfhhis01.txt` covers 2000–present with ~57 countries, but the set of reported countries has changed (new countries are added when their holdings cross a reporting threshold). The `All Other` residual captures the rest.
 - **IMF WEO subject code changes**: The codes in the WEO bulk file change between editions. `GGR_NGDP`/`GGX_NGDP`/`GGXONLB` are the correct codes as of Oct 2024; older editions used `GGREV`/`GGEXP`/`GGPB`.
 - **World Bank fiscal coverage** (`wb_govt_revenue`, `wb_govt_expenditure`) is sparse — around 35 countries with data mainly after 2000. Use IMF WEO (`GGR_NGDP`, `GGX_NGDP`) for broader coverage (196 countries).

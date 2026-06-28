@@ -144,25 +144,6 @@ datasets:
   #   provider: fred
   #   series_id: VVIXCLS
 
-  # SVIX (Martin 2017) — manually downloaded file
-  # Source: William Martin's academic website (LSE faculty page)
-  # The file typically contains columns: date, svix (annualised, decimal)
-  # svix² = risk-neutral E[R²] - 1 = simple variance; a cleaner ERP lower
-  # bound than vix² because it uses simple (not log) returns.
-  # Relationship: vix² ≥ svix² always; gap ≈ risk-neutral skewness/kurtosis.
-  - name: svix
-    source: external
-    provider: file
-    path: "downloads/svix.csv"   # place Martin's file here before pulling
-    date_col: date               # [VERIFY: check actual column name in the file]
-    incremental_key: date
-    note: >
-      Martin (2017) SVIX: daily risk-neutral simple variance lower bound.
-      Download from William Martin's LSE faculty page (search "Martin SVIX data").
-      Place the file at downloads/svix.csv.
-      Verify column names with: python -c "import pandas as pd; print(pd.read_csv('downloads/svix.csv').head())"
-      Then set date_col to match the actual date column name.
-
   # ── Inflation: CPI level (World Bank) ───────────────────────────────────────
   - name: wb_cpi
     source: external
