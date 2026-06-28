@@ -520,6 +520,17 @@ CATALOG: list[dict] = [
         unit="USD millions",
         panel_columns="ISO 3166-1 alpha-2 country code",
     ),
+    # ── BIS LBS ──────────────────────────────────────────────────────────────
+    dict(
+        variable_id="bis_lbs_crossborder_claims",
+        path="macrodata/bis_lbs_wide.parquet",
+        description="BIS Locational Banking Statistics: total cross-border claims of reporting banking systems on all counterparties (USD millions). 48 reporting countries, quarterly, 2000–present.",
+        family="macro",
+        frequency="quarterly",
+        source="BIS Statistics API (WS_LBS_D_PUB, key Q.S.C.A.TO1.A.5J.A)",
+        unit="USD millions",
+        panel_columns="ISO 3166-1 alpha-2 country code (reporting banking system)",
+    ),
     # ── TIC ─────────────────────────────────────────────────────────────────
     dict(
         variable_id="tic_foreign_holders",
