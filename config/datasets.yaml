@@ -249,6 +249,28 @@ datasets:
       Amounts in USD millions (unit_measure=USD, unit_mult=6).
       To narrow to government sector: use discover mode to find the ISSUER_BUS_IMM code.
 
+  # ── BIS locational banking statistics (LBS) ──────────────────────────────────
+  # Quarterly. Cross-border bank claims and liabilities by reporting country.
+  # Dimensions (8): FREQ.L_MEASURE.L_POSITION.L_INSTR.L_DENOM.L_CURR_TYPE.L_PARENT_CTY.L_REP_BANK_TYPE
+  # Key below: quarterly stocks (S), claims (C), all instruments (A),
+  #   all currencies USD-equiv (TO1), all counterpart types (A),
+  #   all counterpart countries aggregated (5J), all bank types (A).
+  # Gives one series per reporting banking system — ~50 countries.
+  - name: bis_lbs
+    source: bis
+    dataflow: WS_LBS_D_PUB
+    key: Q.S.C.A.TO1.A.5J.A
+    start: "2000-01-01"
+    incremental_key: date
+    note: >
+      BIS Locational Banking Statistics, total cross-border claims by reporting country.
+      Quarterly, ~50 reporting countries, USD millions.
+      Dimensions probed live 2026-06-28: FREQ.L_MEASURE.L_POSITION.L_INSTR.L_DENOM.L_CURR_TYPE.L_PARENT_CTY.L_REP_BANK_TYPE
+      Key Q.S.C.A.TO1.A.5J.A = stocks/outstanding, claims (assets), all instruments,
+      all-currency total, all counterpart types, all counterpart countries aggregated,
+      all bank types. Use discover mode to explore liability-side (C→L) or specific
+      counterpart breakdown (5J→specific country code).
+
   # ── IMF World Economic Outlook ────────────────────────────────────────────────
   # Biannual (April + October). ~190 countries from ~1980 + 5-year projections.
   # Best free source for fiscal aggregates (revenue, expenditure, primary balance,

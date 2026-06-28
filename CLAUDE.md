@@ -76,6 +76,8 @@ Multi-mnemonic Datastream economic series (tr_ds_econ library — IMF IFS and na
 ### bis
 BIS Statistics REST API (`stats.bis.org/api/v1`). Config: `dataflow`, `key` (dot-separated dimension values), `start`, `period_format` (optional: `quarterly` default, `monthly`, `daily`). No WRDS connection needed. **Correct dataflow IDs** (from live API as of 2026-06): `WS_DEBT_SEC2_PUB` (international debt securities), `WS_CBS_PUB` (consolidated banking), `WS_LBS_D_PUB` (locational banking), `WS_TC` (total credit), `WS_EER` (effective exchange rates), `WS_CBPOL` (central bank policy rates). The `WS_DEBT_SEC2` ID used in older documentation no longer exists — use `WS_DEBT_SEC2_PUB`. Key `Q.....C.A..TO1.C.A.A.A.A.C` = quarterly, all issuers, total amounts outstanding in all currencies. **For daily/monthly data (e.g. WS_CBPOL), set `period_format: daily` or `period_format: monthly`** — the default `quarterly` will send wrong `startPeriod` format and return no data. Output: `date, <dimension_cols>, obs_value`.
 
+**WS_LBS_D_PUB key structure** (verified 2026-06-28): 8 dimensions — `FREQ.L_MEASURE.L_POSITION.L_INSTR.L_DENOM.L_CURR_TYPE.L_PARENT_CTY.L_REP_BANK_TYPE`. The API returns extra columns beyond the key: `l_rep_cty` (reporting country ISO2), `l_cp_sector` (counterpart sector), `l_cp_country` (counterpart country), `l_pos_type` (position type). To get total cross-border claims per reporting country: filter to `l_cp_sector=A, l_cp_country=5J, l_pos_type=N` — gives one row per (date, reporting country). `5J` = all counterpart countries aggregated. `5A` = all reporting countries aggregate (exclude from country-level output). Key `Q.S.C.A.TO1.A.5J.A` = quarterly, stocks, claims (assets), all instruments, all currencies USD-equiv, all counterparts, all bank types.
+
 ### tic
 US Treasury TIC Major Foreign Holders. Config: `start`. No WRDS connection needed. Fetches two files: `mfhhis01.txt` from `https://treasury.gov/resource-center/data-chart-center/tic/Documents/` (full archive, 2000–present, 26 year-blocks in one tab-delimited file) and `mfh.txt` from `ticdata.treasury.gov` (current rolling window for most recent months). Output: `date, country, holdings_bln_usd`.
 
@@ -149,7 +151,7 @@ wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= 
 - **Bloomberg Commodity Index (BCOM)** — not found in `tr_ds_comds`.
 - **NYMEX WTI continuous series** (`NCLCS00`) — not on WRDS at all. Use `ds_wti_curve` (nearby 1–12 built from individual contracts) instead.
 - **Brent individual contract prefix** confirmed as `LLC` (verified 2026-06-25). Dead prefix `LBZCS` also exists but ends ~2005.
-- **Brazil equity mnemonic** `D2BRFS$` is DJGL Brazil Financial Services, not IBOVESPA. To fix: find the IBOVESPA mnemonic in `ds2equityindex` and update `config/datasets.yaml`.
+- **Brazil equity mnemonic** `D2BRFS$` is DJGL Brazil Financial Services, not IBOVESPA. To fix: find the IBOVESPA mnemonic in `ds2equityindex` and update `config/datasets.yaml`. The `MNEMONIC_TO_ISO2` dict in `clean/equity_indices.py` maps this to `BR` regardless — once the mnemonic is corrected in datasets.yaml and data is re-pulled, the BR column will automatically map to the correct index.
 - **TIC historical URL** — The archive is at `treasury.gov` (not `ticdata.treasury.gov`), filename `mfhhis01.txt`. The file `mfhis.txt` and `mfhhis01.csv` also exist at the same path but `mfhhis01.txt` is most reliable.
 - **WEO subject code drift** — IMF renumbered fiscal codes: `GGREV→GGR_NGDP`, `GGEXP→GGX_NGDP`, `GGPB→GGXONLB`. If subjects return 0 rows, verify codes against the downloaded `.xls` file with `pd.read_csv(path, sep='\t', encoding='utf-16-le')['WEO Subject Code'].unique()`.
 - **BIS dataflow naming** — `WS_DEBT_SEC2` was renamed to `WS_DEBT_SEC2_PUB`. Always verify dataflow IDs with `python wrdsdl.py discover bis --dataflow <ID>` before building keys.
@@ -161,6 +163,8 @@ wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= 
 
 - Read from `data/<dataset_name>/` with `pd.read_parquet(Path("data") / name)`
 - Normalize dates: `pd.to_datetime(df["date_col"]).dt.normalize()`
+- **World Bank annual data**: pivot on `date` (datetime), NOT on `year` (int). Convert: `wide["year"] = pd.to_datetime(wide["year"], format="%Y"); wide.rename(columns={"year": "date"})`. Wide per-indicator files get a `date` datetime column; the panel files (`macro_panel.parquet`) keep `year` as int since it's an identifier alongside `iso3c`.
+- **Oil/other sources with `datetime.date`**: use `.dt.normalize()` not `.dt.date` — the latter creates Python `datetime.date` objects (object dtype), not `datetime64[ns]`, causing parquet read issues.
 - Write to `macrodata/<family>/` with both `.parquet` (always) and `.csv` (unless `--no-csv`)
 - Wide format: `df.pivot(index="date", columns="id_col", values="value_col")`
 - Duplicate (date, id) rows: `groupby(...).last()` before pivot — storage may produce them across Parquet partition boundaries

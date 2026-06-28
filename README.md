@@ -18,13 +18,14 @@ A config-driven pipeline for pulling, storing, and cleaning financial and macroe
 | Agricultural commodities | Daily | WRDS Datastream | 1979–present (grains), 1985–present (softs) |
 | S&P GSCI indices | Daily | WRDS Datastream | 1969–present (spot, total return, excess return) |
 | Refinitiv CRB index | Daily | WRDS Datastream | 1956–2021 |
-| Country equity indices | Daily | WRDS Datastream | ~42 countries, 1950–present (US/JP), 1970s–present (EM) |
+| Country equity indices | Daily | WRDS Datastream | ~47 countries, 1950–present (US/JP), 1970s–present (EM); columns are ISO2 codes |
 | VIX family | Daily | FRED | 1990–present (VIX), 2007–present (VXV 3-month) |
 | World Bank macro | Annual | World Bank API | 1960–present, ~180 countries |
 | World Bank fiscal | Annual | World Bank API | 1990–present, ~35 countries |
 | IMF BOP/IIP/CPIS/CDIS | Annual | IMF SDMX API | 1980–present (network-dependent) |
 | IMF World Economic Outlook | Annual | IMF bulk download | 1980–2029, 196 countries, 11 indicators |
 | BIS international debt securities | Quarterly | BIS Statistics API | 1993–present, 87 countries |
+| BIS locational banking statistics | Quarterly | BIS Statistics API | 2000–present, 48 reporting countries, cross-border claims |
 | US Treasury TIC foreign holders | Monthly | US Treasury | 2000–present, 57 countries |
 | Central bank policy rates | Daily | BIS Statistics API | 1946–present (US), 39 countries |
 | Government bond yields 10Y | Monthly | WRDS Datastream (tr_ds_econ) | 1950–present, 41 countries |
@@ -170,7 +171,7 @@ metals  = pd.read_parquet("macrodata/commodities/metals_wide.parquet")
 energy  = pd.read_parquet("macrodata/commodities/energy_wide.parquet")
 indices = pd.read_parquet("macrodata/commodities/indices_wide.parquet")
 
-# Country equity indices — price level and total return
+# Country equity indices — price level and total return (columns are ISO2 country codes)
 pi = pd.read_parquet("macrodata/equity_indices/equity_pi_wide.parquet")
 ri = pd.read_parquet("macrodata/equity_indices/equity_ri_wide.parquet")
 
@@ -190,6 +191,9 @@ bis_by_res = pd.read_parquet("macrodata/bis_debt_sec_by_res_wide.parquet")  # by
 
 # US Treasury foreign holders (billions USD, monthly)
 tic = pd.read_parquet("macrodata/tic_holdings_wide.parquet")
+
+# BIS locational banking statistics — cross-border claims by reporting country (USD millions, quarterly)
+bis_lbs = pd.read_parquet("macrodata/bis_lbs_wide.parquet")
 ```
 
 Parquet preserves column dtypes (dates stay dates, floats stay floats). Each `.parquet` file has a companion `.csv` for quick inspection in Excel.

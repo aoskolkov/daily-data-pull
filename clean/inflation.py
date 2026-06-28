@@ -99,7 +99,7 @@ def load_oecd(input_dir: str) -> pd.DataFrame | None:
 
 def wb_to_wide(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Pivot World Bank long data to wide: rows = year (int), columns = iso3c codes.
+    Pivot World Bank long data to wide: rows = date (Jan-1 of each year), columns = iso3c codes.
     Falls back to iso2c then country_name if iso3c is missing.
     """
     for candidate in ("iso3c", "iso2c", "country_name"):
@@ -113,10 +113,10 @@ def wb_to_wide(df: pd.DataFrame) -> pd.DataFrame:
         df.pivot_table(index="date", columns=col_id, values="value", aggfunc="last")
         .rename_axis(None, axis="columns")
         .reset_index()
-        .rename(columns={"date": "year"})
-        .sort_values("year")
+        .sort_values("date")
     )
-    wide["year"] = wide["year"].dt.year
+    # Normalize to Jan-1 timestamps (WB annual data comes as e.g. 2020-01-01 already)
+    wide["date"] = pd.to_datetime(wide["date"]).dt.normalize()
     return wide
 
 

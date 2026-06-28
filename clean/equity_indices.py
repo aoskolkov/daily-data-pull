@@ -1,9 +1,9 @@
-﻿"""
+"""
 Clean Datastream country equity index panel to wide format.
 
 Source
 ------
-  data/ds_equity_indices/   ~42 country indices, daily
+  data/ds_equity_indices/   ~47 country indices, daily
   Raw schema: valuedate, dsindexmnem, indexdesc, region, isocurrcode, pi_, ri
 
 pi_ = price index (ex-dividend total price level)
@@ -11,9 +11,9 @@ ri  = return index (total return including dividends)
 
 Output
 ------
-  macrodata/equity_indices/equity_pi_wide.parquet / .csv   date × mnemonic, price index
-  macrodata/equity_indices/equity_ri_wide.parquet / .csv   date × mnemonic, return index
-  macrodata/equity_indices/equity_meta.csv                 mnemonic → country/currency/description
+  macrodata/equity_indices/equity_pi_wide.parquet / .csv   date × ISO2 country, price index
+  macrodata/equity_indices/equity_ri_wide.parquet / .csv   date × ISO2 country, return index
+  macrodata/equity_indices/equity_meta.csv                 mnemonic → iso2/country/currency/description
 
 Usage
 -----
@@ -32,6 +32,58 @@ import pandas as pd
 DEFAULT_STORAGE = "data"
 DEFAULT_OUTPUT  = "macrodata/equity_indices"
 DATASET_NAME    = "ds_equity_indices"
+
+# Datastream equity index mnemonic → ISO 3166-1 alpha-2 country code.
+# Note: D2BRFS$ is DJGL Brazil Financial Services, not IBOVESPA (update mnemonic when fixed).
+MNEMONIC_TO_ISO2: dict[str, str] = {
+    "DJINDUS": "US",
+    "TTOCOMP": "CA",
+    "DAXINDX": "DE",
+    "FTATNOF": "GB",
+    "FTEFRFY": "FR",
+    "FITMISE": "IT",
+    "MADRIDI": "ES",
+    "AMSTEOE": "NL",
+    "BRUSIDX": "BE",
+    "OMXAFGX": "SE",
+    "FTENOKE": "NO",
+    "FTEDKKE": "DK",
+    "WIFINDL": "FI",
+    "FTECHFY": "CH",
+    "WIASTR$": "AT",
+    "POPSIGN": "PT",
+    "GRAGENL": "GR",
+    "ISEQUIT": "IE",
+    "JAPDOWA": "JP",
+    "AUSTOLD": "AU",
+    "WINZEAL": "NZ",
+    "HNGKNGI": "HK",
+    "WISNGP$": "SG",
+    "ISTGENS": "IL",
+    "CHSCOMP": "CN",
+    "IBOMSEN": "IN",
+    "KORCOMP": "KR",
+    "TAIWGHT": "TW",
+    "FBMKLCI": "MY",
+    "BNGKSET": "TH",
+    "JAKCOMP": "ID",
+    "PKSE100": "PK",
+    "HCMNVNE": "VN",
+    "WIMXCOL": "MX",
+    "D2BRFS$": "BR",
+    "ARGMERV": "AR",
+    "IGPAGEN": "CL",
+    "EGHREFG": "EG",
+    "NSEINDX": "KE",
+    "IFGDNG$": "NG",
+    "WISAFRL": "ZA",
+    "TRKISTB": "TR",
+    "WIRUSSL": "RU",
+    "WIPLNDL": "PL",
+    "BUXINDX": "HU",
+    "SBECZRL": "CZ",
+    "IFGDSBL": "SA",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -77,7 +129,7 @@ def main() -> None:
 
     def pivot_field(field: str) -> pd.DataFrame:
         sub = df.dropna(subset=[field])
-        return (
+        wide = (
             sub.groupby(["date", "dsindexmnem"])[field]
             .last()
             .unstack("dsindexmnem")
@@ -85,6 +137,13 @@ def main() -> None:
             .rename_axis(index="date", columns=None)
             .reset_index()
         )
+        # Rename mnemonic columns → ISO2. Keep unmapped mnemonics as-is.
+        rename_map = {m: iso2 for m, iso2 in MNEMONIC_TO_ISO2.items() if m in wide.columns}
+        unmapped = [c for c in wide.columns if c != "date" and c not in rename_map]
+        if unmapped:
+            print(f"    WARNING: no ISO2 mapping for mnemonics (kept as-is): {unmapped}")
+        wide = wide.rename(columns=rename_map)
+        return wide
 
     for field, label in [("pi_", "pi"), ("ri", "ri")]:
         if field not in df.columns:
@@ -92,10 +151,10 @@ def main() -> None:
             continue
         wide = pivot_field(field)
         n_cols = wide.shape[1] - 1
-        print(f"  equity_{label}_wide: {len(wide):,} dates × {n_cols} indices")
+        print(f"  equity_{label}_wide: {len(wide):,} dates × {n_cols} countries")
         save(wide, out_dir / f"equity_{label}_wide", args.csv)
 
-    # Metadata: one row per mnemonic
+    # Metadata: one row per mnemonic with iso2 mapping added
     meta_cols = [c for c in ["dsindexmnem", "indexdesc", "region", "isocurrcode"] if c in df.columns]
     meta = (
         df[meta_cols]
@@ -103,10 +162,12 @@ def main() -> None:
         .sort_values("dsindexmnem")
         .reset_index(drop=True)
     )
+    meta["iso2"] = meta["dsindexmnem"].map(MNEMONIC_TO_ISO2)
     meta_path = out_dir / "equity_meta.csv"
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta.to_csv(meta_path, index=False)
-    print(f"  -> {meta_path}  ({len(meta)} indices)")
+    print(f"  -> {meta_path}  ({len(meta)} indices, "
+          f"{meta['iso2'].notna().sum()} with ISO2 mapping)")
 
 
 if __name__ == "__main__":

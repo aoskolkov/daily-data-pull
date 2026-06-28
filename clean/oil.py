@@ -77,7 +77,7 @@ def load_fred(input_dir: str) -> pd.DataFrame | None:
     df.columns = df.columns.str.lower()
 
     date_col = _detect_date_col(df) or "date"
-    df["date"] = pd.to_datetime(df[date_col], errors="coerce").dt.date
+    df["date"] = pd.to_datetime(df[date_col], errors="coerce").dt.normalize()
     df = df.dropna(subset=["date"])
 
     price_col = "value" if "value" in df.columns else _detect_price_col(df)
@@ -115,7 +115,7 @@ def load_datastream(input_dir: str) -> pd.DataFrame | None:
         print("Inspect with: import pandas as pd; pd.read_parquet('data/ds_wti_front').head()")
         return None
 
-    df["date"] = pd.to_datetime(df[date_col], errors="coerce").dt.date
+    df["date"] = pd.to_datetime(df[date_col], errors="coerce").dt.normalize()
     df = df.dropna(subset=["date"])
 
     price_col = _detect_price_col(df)

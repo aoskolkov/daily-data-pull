@@ -92,14 +92,17 @@ def load_wb(dataset_name: str, storage_root: str) -> pd.DataFrame | None:
 
 
 def to_wide(df: pd.DataFrame, col_id: str = "iso3c") -> pd.DataFrame:
-    """Pivot to wide: rows = year, columns = iso3c country codes."""
+    """Pivot to wide: rows = date (Jan-1 of each year), columns = iso3c country codes."""
     col = col_id if col_id in df.columns and df[col_id].notna().any() else "country_name"
-    return (
+    wide = (
         df.pivot_table(index="year", columns=col, values="value", aggfunc="last")
         .rename_axis(None, axis="columns")
         .reset_index()
         .sort_values("year")
     )
+    wide["year"] = pd.to_datetime(wide["year"], format="%Y")
+    wide = wide.rename(columns={"year": "date"})
+    return wide
 
 
 def save(df: pd.DataFrame, path: Path, write_csv: bool) -> None:
