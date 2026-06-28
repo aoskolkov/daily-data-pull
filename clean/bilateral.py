@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean IMF CPIS and CDIS bilateral position data.
 
 CPIS — Coordinated Portfolio Investment Survey
@@ -17,7 +17,7 @@ Output format: long Parquet with columns
 Optionally: reporter × counterpart matrices for a given year (--matrix).
 
 Input:  data/imf_cpis/   data/imf_cdis/
-Output: output/bilateral/
+Output: macrodata/bilateral/
 
 Usage
 -----
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import pandas as pd
 
-DEFAULT_OUTPUT = "output/bilateral"
+DEFAULT_OUTPUT = "macrodata/bilateral"
 
 # Human-readable labels for common CPIS/CDIS indicator codes.
 # Run `python wrdsdl.py discover imf --dataset CPIS` to see all available codes.

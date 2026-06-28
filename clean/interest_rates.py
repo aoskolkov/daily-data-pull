@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean interest rate data: BIS central bank policy rates and Datastream bond yields.
 
 Sources:
@@ -6,8 +6,8 @@ Sources:
   data/ds_bond_yields_10y/ — tr_ds_econ monthly, columns: date_, dsmnemonic, close_
 
 Output:
-  output/interest_rates/cbpol_wide.{parquet,csv}       date × ISO2 country
-  output/interest_rates/bond_yield_10y_wide.{parquet,csv}  date × ISO2 country
+  macrodata/interest_rates/cbpol_wide.{parquet,csv}       date × ISO2 country
+  macrodata/interest_rates/bond_yield_10y_wide.{parquet,csv}  date × ISO2 country
 
 Usage:
   python clean/interest_rates.py
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pandas as pd
 
-OUT_DIR = Path("output/interest_rates")
+OUT_DIR = Path("macrodata/interest_rates")
 
 # Map Datastream bond yield mnemonics → ISO 3166-1 alpha-2 country codes
 # (or XM for Eurozone)

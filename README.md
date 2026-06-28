@@ -1,4 +1,4 @@
-# daily-data-pull
+﻿# daily-data-pull
 
 A config-driven pipeline for pulling, storing, and cleaning financial and macroeconomic data from WRDS (Datastream/Compustat), FRED, and the World Bank.
 
@@ -88,7 +88,7 @@ python wrdsdl.py pull --all
 python wrdsdl.py refresh ds_metals
 ```
 
-**Run all clean scripts (produces wide outputs in `output/`):**
+**Run all clean scripts (produces wide outputs in `macrodata/`):**
 ```bash
 python wrdsdl.py clean
 ```
@@ -136,24 +136,24 @@ src/
     tic.py               # US Treasury TIC Major Foreign Holders
 
 clean/                   # one script per output family
-  fx_spot.py             # → output/fx_spot/
-  fx_forward.py          # → output/fx_forward/
-  oil.py                 # → output/oil/
-  oil_curve.py           # → output/oil_curve/
-  commodities.py         # → output/commodities/  (metals/energy/agri/indices)
-  equity_indices.py      # → output/equity_indices/
-  inflation.py           # → output/inflation/
-  macro.py               # → output/macro/
-  capital_flows.py       # → output/capital_flows/
-  bilateral.py           # → output/bilateral/
-  vol.py                 # → output/vol/
-  interest_rates.py      # → output/interest_rates/cbpol_wide + bond_yield_10y_wide
-  tic.py                 # → output/tic_holdings_wide.{parquet,csv}
-  bis_debt_sec.py        # → output/bis_debt_sec_by_{nat,res}_wide.{parquet,csv}
-  imf_weo.py             # → output/weo_{subject}_wide.{parquet,csv} + weo_long.parquet
+  fx_spot.py             # → macrodata/fx_spot/
+  fx_forward.py          # → macrodata/fx_forward/
+  oil.py                 # → macrodata/oil/
+  oil_curve.py           # → macrodata/oil_curve/
+  commodities.py         # → macrodata/commodities/  (metals/energy/agri/indices)
+  equity_indices.py      # → macrodata/equity_indices/
+  inflation.py           # → macrodata/inflation/
+  macro.py               # → macrodata/macro/
+  capital_flows.py       # → macrodata/capital_flows/
+  bilateral.py           # → macrodata/bilateral/
+  vol.py                 # → macrodata/vol/
+  interest_rates.py      # → macrodata/interest_rates/cbpol_wide + bond_yield_10y_wide
+  tic.py                 # → macrodata/tic_holdings_wide.{parquet,csv}
+  bis_debt_sec.py        # → macrodata/bis_debt_sec_by_{nat,res}_wide.{parquet,csv}
+  imf_weo.py             # → macrodata/weo_{subject}_wide.{parquet,csv} + weo_long.parquet
 
 data/                    # raw Parquet from pull pipeline (one folder per dataset)
-output/                  # clean wide-format outputs (Parquet + CSV)
+macrodata/                  # clean wide-format outputs (Parquet + CSV)
 ```
 
 ---
@@ -166,30 +166,30 @@ output/                  # clean wide-format outputs (Parquet + CSV)
 import pandas as pd
 
 # Commodity prices
-metals  = pd.read_parquet("output/commodities/metals_wide.parquet")
-energy  = pd.read_parquet("output/commodities/energy_wide.parquet")
-indices = pd.read_parquet("output/commodities/indices_wide.parquet")
+metals  = pd.read_parquet("macrodata/commodities/metals_wide.parquet")
+energy  = pd.read_parquet("macrodata/commodities/energy_wide.parquet")
+indices = pd.read_parquet("macrodata/commodities/indices_wide.parquet")
 
 # Country equity indices — price level and total return
-pi = pd.read_parquet("output/equity_indices/equity_pi_wide.parquet")
-ri = pd.read_parquet("output/equity_indices/equity_ri_wide.parquet")
+pi = pd.read_parquet("macrodata/equity_indices/equity_pi_wide.parquet")
+ri = pd.read_parquet("macrodata/equity_indices/equity_ri_wide.parquet")
 
 # FX spot — country ISO3 columns
-fx = pd.read_parquet("output/fx_spot/fx_spot_country_wide.parquet")
+fx = pd.read_parquet("macrodata/fx_spot/fx_spot_country_wide.parquet")
 
 # WEO — one file per indicator, date × country
-gdp_growth = pd.read_parquet("output/weo_ngdp_rpch_wide.parquet")
-govt_debt   = pd.read_parquet("output/weo_ggxwdg_wide.parquet")   # % of GDP
-fiscal_bal  = pd.read_parquet("output/weo_ggxcnl_wide.parquet")   # % of GDP
+gdp_growth = pd.read_parquet("macrodata/weo_ngdp_rpch_wide.parquet")
+govt_debt   = pd.read_parquet("macrodata/weo_ggxwdg_wide.parquet")   # % of GDP
+fiscal_bal  = pd.read_parquet("macrodata/weo_ggxcnl_wide.parquet")   # % of GDP
 # or load all in long format
-weo = pd.read_parquet("output/weo_long.parquet")
+weo = pd.read_parquet("macrodata/weo_long.parquet")
 
 # BIS international debt securities outstanding (USD millions, quarterly)
-bis_by_nat = pd.read_parquet("output/bis_debt_sec_by_nat_wide.parquet")  # by nationality
-bis_by_res = pd.read_parquet("output/bis_debt_sec_by_res_wide.parquet")  # by residence
+bis_by_nat = pd.read_parquet("macrodata/bis_debt_sec_by_nat_wide.parquet")  # by nationality
+bis_by_res = pd.read_parquet("macrodata/bis_debt_sec_by_res_wide.parquet")  # by residence
 
 # US Treasury foreign holders (billions USD, monthly)
-tic = pd.read_parquet("output/tic_holdings_wide.parquet")
+tic = pd.read_parquet("macrodata/tic_holdings_wide.parquet")
 ```
 
 Parquet preserves column dtypes (dates stay dates, floats stay floats). Each `.parquet` file has a companion `.csv` for quick inspection in Excel.

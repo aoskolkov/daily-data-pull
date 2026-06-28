@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean Datastream commodity prices to wide format.
 
 Sources (all from tr_ds_comds via wrds_ds_comds adapter)
@@ -16,11 +16,11 @@ is null — some series store prices only in dsp.
 
 Output
 ------
-  output/commodities/metals_wide.parquet / .csv
-  output/commodities/energy_wide.parquet / .csv
-  output/commodities/agri_wide.parquet   / .csv
-  output/commodities/indices_wide.parquet / .csv
-  output/commodities/commodities_meta.csv    mnemonic metadata lookup
+  macrodata/commodities/metals_wide.parquet / .csv
+  macrodata/commodities/energy_wide.parquet / .csv
+  macrodata/commodities/agri_wide.parquet   / .csv
+  macrodata/commodities/indices_wide.parquet / .csv
+  macrodata/commodities/commodities_meta.csv    mnemonic metadata lookup
 
 Usage
 -----
@@ -44,7 +44,7 @@ DATASETS: dict[str, str] = {
 }
 
 DEFAULT_STORAGE = "data"
-DEFAULT_OUTPUT  = "output/commodities"
+DEFAULT_OUTPUT  = "macrodata/commodities"
 
 
 def parse_args() -> argparse.Namespace:

@@ -1,10 +1,10 @@
-"""
+﻿"""
 Clean script for IMF World Economic Outlook (WEO) data.
 
 Input:  data/imf_weo/
-Output: output/weo_wide.{parquet,csv}      — one column per (subject × country) [tall format]
-        output/weo_{subject}_wide.{parquet,csv}  — one file per subject, date × country
-        output/weo_meta.csv
+Output: macrodata/weo_wide.{parquet,csv}      — one column per (subject × country) [tall format]
+        macrodata/weo_{subject}_wide.{parquet,csv}  — one file per subject, date × country
+        macrodata/weo_meta.csv
 
 The WEO data is an annual panel: 196 countries × 11 subjects × ~50 years.
 The primary output is weo_wide.parquet with:

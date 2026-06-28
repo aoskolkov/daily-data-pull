@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean IMF BOP (flows) and IIP (stocks) data.
 
 Produces:
@@ -16,7 +16,7 @@ The five financial-account components (BPM6 sign convention):
 Each is split assets / liabilities / net where available.
 
 Input:  data/imf_bop/   data/imf_iip/
-Output: output/capital_flows/
+Output: macrodata/capital_flows/
 
 Usage
 -----
@@ -34,7 +34,7 @@ from pathlib import Path
 
 import pandas as pd
 
-DEFAULT_OUTPUT = "output/capital_flows"
+DEFAULT_OUTPUT = "macrodata/capital_flows"
 
 try:
     import sys as _sys

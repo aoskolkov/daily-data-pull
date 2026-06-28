@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean FX forward (and spot) rates from raw WRDS Datastream data.
 
 Raw source: data/fx_forward (from wrds_fx adapter)
@@ -14,9 +14,9 @@ Output convention: units of local currency per 1 USD
 
 Output
 ------
-  output/fx_forward/fx_forward_long.parquet         (date, currency, tenor, rate)
-  output/fx_forward/by_tenor/{tenor}_wide.parquet   date × currency (one file per tenor)
-  output/fx_forward/by_tenor/{tenor}_wide.csv
+  macrodata/fx_forward/fx_forward_long.parquet         (date, currency, tenor, rate)
+  macrodata/fx_forward/by_tenor/{tenor}_wide.parquet   date × currency (one file per tenor)
+  macrodata/fx_forward/by_tenor/{tenor}_wide.csv
 
 Usage
 -----
@@ -34,7 +34,7 @@ from pathlib import Path
 import pandas as pd
 
 DEFAULT_INPUT = "data/fx_forward"
-DEFAULT_OUTPUT = "output/fx_forward"
+DEFAULT_OUTPUT = "macrodata/fx_forward"
 
 # Ordered standard tenors for output naming
 STANDARD_TENORS = [

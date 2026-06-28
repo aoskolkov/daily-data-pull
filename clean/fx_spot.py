@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean FX spot rates from raw WRDS data.
 
 Reads raw comp.exrt_dly Parquet (pulled by wrdsdl) and produces:
@@ -17,16 +17,16 @@ Usage
 -----
 Output
 ------
-  output/fx_spot/fx_spot_currency_wide.parquet   date × currency code
-  output/fx_spot/fx_spot_country_wide.parquet    date × iso3c  (via crosswalk)
-  output/fx_spot/fx_spot_long.parquet            (date, currency, rate)
+  macrodata/fx_spot/fx_spot_currency_wide.parquet   date × currency code
+  macrodata/fx_spot/fx_spot_country_wide.parquet    date × iso3c  (via crosswalk)
+  macrodata/fx_spot/fx_spot_long.parquet            (date, currency, rate)
 
 Usage
 -----
-  python clean/fx_spot.py                   # data/fx_spot -> output/fx_spot
+  python clean/fx_spot.py                   # data/fx_spot -> macrodata/fx_spot
   python clean/fx_spot.py --no-csv          # skip CSV output
   python clean/fx_spot.py --no-country      # skip country-indexed output
-  python clean/fx_spot.py --input data/fx_spot --output output/fx_spot
+  python clean/fx_spot.py --input data/fx_spot --output macrodata/fx_spot
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ from pathlib import Path
 import pandas as pd
 
 DEFAULT_INPUT = "data/fx_spot"
-DEFAULT_OUTPUT = "output/fx_spot"
+DEFAULT_OUTPUT = "macrodata/fx_spot"
 
 
 def parse_args() -> argparse.Namespace:

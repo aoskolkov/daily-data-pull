@@ -1,4 +1,4 @@
-"""
+﻿"""
 Clean oil futures term structure from WRDS individual contract data.
 
 WTI (NYMEX CL):  months 1-12 via ds_wti_curve  (NWS{MMYY} contracts, source=wrds_fut)
@@ -25,11 +25,11 @@ Metrics computed (per commodity):
 
 Output
 ------
-  output/oil_curve/{commodity}_wide.parquet    date × F1..F12
-  output/oil_curve/{commodity}_wide.csv
-  output/oil_curve/{commodity}_long.parquet    (date, commodity, tenor, price)
-  output/oil_curve/{commodity}_metrics.parquet (date, commodity, slope_12_1, …)
-  output/oil_curve/oil_curve_long.parquet      both commodities combined
+  macrodata/oil_curve/{commodity}_wide.parquet    date × F1..F12
+  macrodata/oil_curve/{commodity}_wide.csv
+  macrodata/oil_curve/{commodity}_long.parquet    (date, commodity, tenor, price)
+  macrodata/oil_curve/{commodity}_metrics.parquet (date, commodity, slope_12_1, …)
+  macrodata/oil_curve/oil_curve_long.parquet      both commodities combined
 
 Usage
 -----
@@ -48,7 +48,7 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 
-DEFAULT_OUTPUT = "output/oil_curve"
+DEFAULT_OUTPUT = "macrodata/oil_curve"
 STORAGE_ROOT = "data"
 
 # Dataset name -> (commodity label, mnemonic root for auto-numbering)

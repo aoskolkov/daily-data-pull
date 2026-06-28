@@ -1,4 +1,4 @@
-"""
+﻿"""
 Generate variables.csv in the repo root.
 
 One row per output parquet file. Auto-reads date range and column count from each
@@ -23,7 +23,7 @@ CATALOG: list[dict] = [
     # ── Commodities ─────────────────────────────────────────────────────────
     dict(
         variable_id="commodities_metals",
-        path="output/commodities/metals_wide.parquet",
+        path="macrodata/commodities/metals_wide.parquet",
         description="Precious metals spot prices: gold (GOLDBLN), silver (SILVPM$), platinum (PLATFRE), palladium (PALLADM). Also LME aluminium (LAHCASH, LADCASH) and lead (LEDCASH).",
         family="commodity",
         frequency="daily",
@@ -33,7 +33,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="commodities_energy",
-        path="output/commodities/energy_wide.parquet",
+        path="macrodata/commodities/energy_wide.parquet",
         description="Energy commodity spot prices: Brent crude (OILBREN), Henry Hub gas (NATLGAS, dead 2020), heating oil (EIAHONY), gasoline (GSUNLRG).",
         family="commodity",
         frequency="daily",
@@ -43,7 +43,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="commodities_agri",
-        path="output/commodities/agri_wide.parquet",
+        path="macrodata/commodities/agri_wide.parquet",
         description="Agricultural commodity spot prices: wheat (WHEATMP), corn (CORNUS2), soybeans (SOYBEAN), coffee (COFDICA), cocoa (COCINUS), sugar (WSUGDLY), cotton (COTTONM).",
         family="commodity",
         frequency="daily",
@@ -53,7 +53,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="commodities_indices",
-        path="output/commodities/indices_wide.parquet",
+        path="macrodata/commodities/indices_wide.parquet",
         description="S&P GSCI (spot/total-return/excess-return), GSCI sub-indices (energy, non-energy, agriculture, precious metals), Refinitiv CRB (dead 2021).",
         family="commodity",
         frequency="daily",
@@ -63,7 +63,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="oil_wti_spot_fred",
-        path="output/oil/fred_wti_spot.parquet",
+        path="macrodata/oil/fred_wti_spot.parquet",
         description="WTI crude oil spot price (Cushing, OK) from FRED (DCOILWTICO). Single series.",
         family="commodity",
         frequency="daily",
@@ -73,7 +73,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="oil_wti_front_ds",
-        path="output/oil/ds_wti_front.parquet",
+        path="macrodata/oil/ds_wti_front.parquet",
         description="NYMEX WTI front-month continuous series (CRUDOIL) from Datastream. Single series.",
         family="commodity",
         frequency="daily",
@@ -83,7 +83,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="oil_wti_curve",
-        path="output/oil_curve/wti_wide.parquet",
+        path="macrodata/oil_curve/wti_wide.parquet",
         description="NYMEX WTI futures term structure: nearby contracts 1–12 built from individual contracts ranked by last trading date. Columns are nearby positions.",
         family="commodity",
         frequency="daily",
@@ -94,7 +94,7 @@ CATALOG: list[dict] = [
     # ── Equity indices ───────────────────────────────────────────────────────
     dict(
         variable_id="equity_price_index",
-        path="output/equity_indices/equity_pi_wide.parquet",
+        path="macrodata/equity_indices/equity_pi_wide.parquet",
         description="Country equity index price levels (pi_) for ~47 countries. Columns are Datastream index mnemonics (DJINDUS=US, JAPDOWA=Japan, FTSEALL=UK, etc.).",
         family="equity",
         frequency="daily",
@@ -104,7 +104,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="equity_total_return",
-        path="output/equity_indices/equity_ri_wide.parquet",
+        path="macrodata/equity_indices/equity_ri_wide.parquet",
         description="Country equity index total return (ri_, dividends reinvested) for ~33 countries. Same structure as equity_price_index.",
         family="equity",
         frequency="daily",
@@ -115,7 +115,7 @@ CATALOG: list[dict] = [
     # ── FX ───────────────────────────────────────────────────────────────────
     dict(
         variable_id="fx_spot_vs_usd_by_country",
-        path="output/fx_spot/fx_spot_country_wide.parquet",
+        path="macrodata/fx_spot/fx_spot_country_wide.parquet",
         description="FX spot rates vs USD for ~197 countries. Columns are ISO 3166-1 alpha-3 country codes. Direction: local currency per 1 USD (except EUR/GBP/AUD/NZD which are USD per 1 unit). From Compustat exrt_dly.",
         family="fx",
         frequency="daily",
@@ -125,7 +125,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_spot_vs_usd_by_currency",
-        path="output/fx_spot/fx_spot_currency_wide.parquet",
+        path="macrodata/fx_spot/fx_spot_currency_wide.parquet",
         description="Same as fx_spot_vs_usd_by_country but columns are ISO 4217 currency codes.",
         family="fx",
         frequency="daily",
@@ -136,7 +136,7 @@ CATALOG: list[dict] = [
     # ── FX forward rates ─────────────────────────────────────────────────────
     dict(
         variable_id="fx_forward_long",
-        path="output/fx_forward/fx_forward_long.parquet",
+        path="macrodata/fx_forward/fx_forward_long.parquet",
         description="All FX forward and spot rates in long format: (date, currency, tenor, rate). 58 tenors from Datastream, 173 currencies. Units: local currency per 1 USD.",
         family="fx",
         frequency="daily",
@@ -146,7 +146,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_spot_ds",
-        path="output/fx_forward/by_tenor/SPOT_wide.parquet",
+        path="macrodata/fx_forward/by_tenor/SPOT_wide.parquet",
         description="FX spot rates from Datastream (ds2fxrate ratetypecode=SPOT), 173 currencies vs USD. Longer history than Compustat spot for some EM currencies.",
         family="fx",
         frequency="daily",
@@ -156,7 +156,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_forward_1m",
-        path="output/fx_forward/by_tenor/1MFD_wide.parquet",
+        path="macrodata/fx_forward/by_tenor/1MFD_wide.parquet",
         description="FX 1-month forward rates vs USD (Datastream ratetypecode=1MFD). Columns are ISO 4217 currency codes.",
         family="fx",
         frequency="daily",
@@ -166,7 +166,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_forward_3m",
-        path="output/fx_forward/by_tenor/3MFD_wide.parquet",
+        path="macrodata/fx_forward/by_tenor/3MFD_wide.parquet",
         description="FX 3-month forward rates vs USD (Datastream ratetypecode=3MFD). Columns are ISO 4217 currency codes.",
         family="fx",
         frequency="daily",
@@ -176,7 +176,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_forward_6m",
-        path="output/fx_forward/by_tenor/6MFD_wide.parquet",
+        path="macrodata/fx_forward/by_tenor/6MFD_wide.parquet",
         description="FX 6-month forward rates vs USD (Datastream ratetypecode=6MFD). Columns are ISO 4217 currency codes.",
         family="fx",
         frequency="daily",
@@ -186,7 +186,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_forward_1y",
-        path="output/fx_forward/by_tenor/1YFD_wide.parquet",
+        path="macrodata/fx_forward/by_tenor/1YFD_wide.parquet",
         description="FX 1-year forward rates vs USD (Datastream ratetypecode=1YFD). Columns are ISO 4217 currency codes.",
         family="fx",
         frequency="daily",
@@ -196,7 +196,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_forward_2y",
-        path="output/fx_forward/by_tenor/2YFD_wide.parquet",
+        path="macrodata/fx_forward/by_tenor/2YFD_wide.parquet",
         description="FX 2-year forward rates vs USD (Datastream ratetypecode=2YFD). Columns are ISO 4217 currency codes.",
         family="fx",
         frequency="daily",
@@ -206,7 +206,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="fx_forward_5y",
-        path="output/fx_forward/by_tenor/5YFD_wide.parquet",
+        path="macrodata/fx_forward/by_tenor/5YFD_wide.parquet",
         description="FX 5-year forward rates vs USD (Datastream ratetypecode=5YFD). Columns are ISO 4217 currency codes.",
         family="fx",
         frequency="daily",
@@ -217,7 +217,7 @@ CATALOG: list[dict] = [
     # ── Interest rates ───────────────────────────────────────────────────────
     dict(
         variable_id="cbpol_central_bank_rate",
-        path="output/interest_rates/cbpol_wide.parquet",
+        path="macrodata/interest_rates/cbpol_wide.parquet",
         description="Central bank policy rates, daily, 39–49 countries. Columns are ISO 3166-1 alpha-2 country codes (XM = Eurozone). US from 1954, G10 from 1970s–1980s, EM from 1990s–2000s.",
         family="rates",
         frequency="daily",
@@ -227,7 +227,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="bond_yield_10y",
-        path="output/interest_rates/bond_yield_10y_wide.parquet",
+        path="macrodata/interest_rates/bond_yield_10y_wide.parquet",
         description="10-year government bond yields, monthly, 41 countries. Columns are ISO 3166-1 alpha-2 country codes. Mostly end-of-period benchmark yields from national sources via Datastream.",
         family="rates",
         frequency="monthly",
@@ -238,7 +238,7 @@ CATALOG: list[dict] = [
     # ── Volatility ───────────────────────────────────────────────────────────
     dict(
         variable_id="volatility_vix",
-        path="output/vol/vol_daily.parquet",
+        path="macrodata/vol/vol_daily.parquet",
         description="Volatility indices: VIX (1-month implied vol on S&P 500), VXV (3-month). Wide format, one column per index.",
         family="vol",
         frequency="daily",
@@ -249,7 +249,7 @@ CATALOG: list[dict] = [
     # ── Inflation ────────────────────────────────────────────────────────────
     dict(
         variable_id="wb_cpi_level",
-        path="output/inflation/wb_cpi_wide.parquet",
+        path="macrodata/inflation/wb_cpi_wide.parquet",
         description="Consumer price index level (2010=100) from World Bank for ~192 countries.",
         family="macro",
         frequency="annual",
@@ -259,7 +259,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_inflation_rate",
-        path="output/inflation/wb_inflation_wide.parquet",
+        path="macrodata/inflation/wb_inflation_wide.parquet",
         description="Annual CPI inflation rate (%) from World Bank for ~193 countries.",
         family="macro",
         frequency="annual",
@@ -270,7 +270,7 @@ CATALOG: list[dict] = [
     # ── World Bank macro ─────────────────────────────────────────────────────
     dict(
         variable_id="wb_gdp_usd",
-        path="output/macro/wide/wb_gdp_usd.parquet",
+        path="macrodata/macro/wide/wb_gdp_usd.parquet",
         description="GDP in current USD for ~214 countries.",
         family="macro",
         frequency="annual",
@@ -280,7 +280,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_gdp_growth",
-        path="output/macro/wide/wb_gdp_growth.parquet",
+        path="macrodata/macro/wide/wb_gdp_growth.parquet",
         description="Real GDP growth rate (%) for ~214 countries.",
         family="macro",
         frequency="annual",
@@ -290,7 +290,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_gdp_per_capita",
-        path="output/macro/wide/wb_gdp_pcap_usd.parquet",
+        path="macrodata/macro/wide/wb_gdp_pcap_usd.parquet",
         description="GDP per capita in current USD for ~214 countries.",
         family="macro",
         frequency="annual",
@@ -300,7 +300,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_household_consumption",
-        path="output/macro/wide/wb_consumption_hh.parquet",
+        path="macrodata/macro/wide/wb_consumption_hh.parquet",
         description="Household final consumption expenditure (current USD) for ~188 countries.",
         family="macro",
         frequency="annual",
@@ -310,7 +310,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_govt_consumption",
-        path="output/macro/wide/wb_consumption_govt.parquet",
+        path="macrodata/macro/wide/wb_consumption_govt.parquet",
         description="Government final consumption expenditure (current USD) for ~186 countries. This is the G in C+I+G+NX, NOT fiscal revenue/expenditure.",
         family="macro",
         frequency="annual",
@@ -320,7 +320,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_investment",
-        path="output/macro/wide/wb_investment.parquet",
+        path="macrodata/macro/wide/wb_investment.parquet",
         description="Gross fixed capital formation (current USD) for ~179 countries.",
         family="macro",
         frequency="annual",
@@ -330,7 +330,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_exports",
-        path="output/macro/wide/wb_exports.parquet",
+        path="macrodata/macro/wide/wb_exports.parquet",
         description="Exports of goods and services (current USD) for ~192 countries.",
         family="macro",
         frequency="annual",
@@ -340,7 +340,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_imports",
-        path="output/macro/wide/wb_imports.parquet",
+        path="macrodata/macro/wide/wb_imports.parquet",
         description="Imports of goods and services (current USD) for ~192 countries.",
         family="macro",
         frequency="annual",
@@ -350,7 +350,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_current_account",
-        path="output/macro/wide/wb_current_account.parquet",
+        path="macrodata/macro/wide/wb_current_account.parquet",
         description="Current account balance (current USD) for ~200 countries.",
         family="macro",
         frequency="annual",
@@ -360,7 +360,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_fdi_inflows",
-        path="output/macro/wide/wb_fdi_inflows.parquet",
+        path="macrodata/macro/wide/wb_fdi_inflows.parquet",
         description="Foreign direct investment net inflows (current USD) for ~204 countries.",
         family="macro",
         frequency="annual",
@@ -370,7 +370,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_fdi_outflows",
-        path="output/macro/wide/wb_fdi_outflows.parquet",
+        path="macrodata/macro/wide/wb_fdi_outflows.parquet",
         description="Foreign direct investment net outflows (current USD) for ~198 countries.",
         family="macro",
         frequency="annual",
@@ -380,7 +380,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="wb_portfolio_equity_flows",
-        path="output/macro/wide/wb_portfolio_equity.parquet",
+        path="macrodata/macro/wide/wb_portfolio_equity.parquet",
         description="Portfolio equity net inflows (current USD) for ~191 countries.",
         family="macro",
         frequency="annual",
@@ -391,7 +391,7 @@ CATALOG: list[dict] = [
     # ── IMF WEO ─────────────────────────────────────────────────────────────
     dict(
         variable_id="weo_gdp_usd",
-        path="output/weo_ngdpd_wide.parquet",
+        path="macrodata/weo_ngdpd_wide.parquet",
         description="GDP in current USD (billions) from IMF WEO, 196 countries, 1980–2029 (incl. projections).",
         family="macro",
         frequency="annual",
@@ -401,7 +401,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_gdp_growth",
-        path="output/weo_ngdp_rpch_wide.parquet",
+        path="macrodata/weo_ngdp_rpch_wide.parquet",
         description="Real GDP growth rate (%) from IMF WEO, 196 countries.",
         family="macro",
         frequency="annual",
@@ -411,7 +411,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_inflation",
-        path="output/weo_pcpipch_wide.parquet",
+        path="macrodata/weo_pcpipch_wide.parquet",
         description="CPI inflation rate (%) from IMF WEO, 196 countries.",
         family="macro",
         frequency="annual",
@@ -421,7 +421,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_current_account_pct_gdp",
-        path="output/weo_bca_ngdpd_wide.parquet",
+        path="macrodata/weo_bca_ngdpd_wide.parquet",
         description="Current account balance (% of GDP) from IMF WEO, 195 countries.",
         family="macro",
         frequency="annual",
@@ -431,7 +431,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_unemployment",
-        path="output/weo_lur_wide.parquet",
+        path="macrodata/weo_lur_wide.parquet",
         description="Unemployment rate (%) from IMF WEO, 114 countries.",
         family="macro",
         frequency="annual",
@@ -441,7 +441,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_govt_revenue_pct_gdp",
-        path="output/weo_ggr_ngdp_wide.parquet",
+        path="macrodata/weo_ggr_ngdp_wide.parquet",
         description="General government revenue (% of GDP) from IMF WEO, 196 countries.",
         family="fiscal",
         frequency="annual",
@@ -451,7 +451,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_govt_expenditure_pct_gdp",
-        path="output/weo_ggx_ngdp_wide.parquet",
+        path="macrodata/weo_ggx_ngdp_wide.parquet",
         description="General government total expenditure (% of GDP) from IMF WEO, 196 countries.",
         family="fiscal",
         frequency="annual",
@@ -461,7 +461,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_fiscal_balance_pct_gdp",
-        path="output/weo_ggxcnl_wide.parquet",
+        path="macrodata/weo_ggxcnl_wide.parquet",
         description="General government net lending/borrowing = fiscal balance (% of GDP) from IMF WEO, 196 countries.",
         family="fiscal",
         frequency="annual",
@@ -471,7 +471,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_primary_balance_pct_gdp",
-        path="output/weo_ggxonlb_wide.parquet",
+        path="macrodata/weo_ggxonlb_wide.parquet",
         description="General government primary net lending/borrowing (% of GDP) from IMF WEO, 188 countries.",
         family="fiscal",
         frequency="annual",
@@ -481,7 +481,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_govt_debt_gross_pct_gdp",
-        path="output/weo_ggxwdg_wide.parquet",
+        path="macrodata/weo_ggxwdg_wide.parquet",
         description="General government gross debt (% of GDP) from IMF WEO, 194 countries.",
         family="fiscal",
         frequency="annual",
@@ -491,7 +491,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="weo_govt_debt_net_pct_gdp",
-        path="output/weo_ggxwdn_wide.parquet",
+        path="macrodata/weo_ggxwdn_wide.parquet",
         description="General government net debt (% of GDP) from IMF WEO, 91 countries.",
         family="fiscal",
         frequency="annual",
@@ -502,7 +502,7 @@ CATALOG: list[dict] = [
     # ── BIS ─────────────────────────────────────────────────────────────────
     dict(
         variable_id="bis_intl_debt_by_nationality",
-        path="output/bis_debt_sec_by_nat_wide.parquet",
+        path="macrodata/bis_debt_sec_by_nat_wide.parquet",
         description="BIS international debt securities outstanding by issuer nationality (USD millions). issuer_res=3P means issued outside home country. 87 countries, quarterly.",
         family="fiscal",
         frequency="quarterly",
@@ -512,7 +512,7 @@ CATALOG: list[dict] = [
     ),
     dict(
         variable_id="bis_intl_debt_by_residence",
-        path="output/bis_debt_sec_by_res_wide.parquet",
+        path="macrodata/bis_debt_sec_by_res_wide.parquet",
         description="BIS international debt securities outstanding by issuer residence country (USD millions). 87 countries, quarterly.",
         family="fiscal",
         frequency="quarterly",
@@ -523,7 +523,7 @@ CATALOG: list[dict] = [
     # ── TIC ─────────────────────────────────────────────────────────────────
     dict(
         variable_id="tic_foreign_holders",
-        path="output/tic_holdings_wide.parquet",
+        path="macrodata/tic_holdings_wide.parquet",
         description="Foreign holdings of US Treasury securities by country (billions USD). 57 countries, monthly, 2000–present.",
         family="monetary",
         frequency="monthly",
