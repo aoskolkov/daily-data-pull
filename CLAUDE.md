@@ -81,6 +81,9 @@ BIS Statistics REST API (`stats.bis.org/api/v1`). Config: `dataflow`, `key` (dot
 ### tic
 US Treasury TIC Major Foreign Holders. Config: `start`. No WRDS connection needed. Fetches two files: `mfhhis01.txt` from `https://treasury.gov/resource-center/data-chart-center/tic/Documents/` (full archive, 2000–present, 26 year-blocks in one tab-delimited file) and `mfh.txt` from `ticdata.treasury.gov` (current rolling window for most recent months). Output: `date, country, holdings_bln_usd`.
 
+### msci_web
+MSCI Standard (Large+Mid Cap) country equity index levels. No WRDS connection needed. Config: `start` (default `1990-01-01`), `frequency` (`M` monthly default, `Q` quarterly). Uses MSCI's public webapp endpoint (`www.msci.com/webapp/indexperf/charts`) — no API key required. Downloads both gross total return (`priceLevel=41`) and price return (`priceLevel=0`) in USD (`currency=15`). Batches 45 countries across two requests (batch size 20) with a 1-second pause between. **Russia excluded**: MSCI suspended the index post-Feb 2022, endpoint returns HTTP 500. XLS response has copyright rows after the data — filtered via `pd.to_datetime(..., errors='coerce').dropna()`. Output: `date, iso2, gross_tr, price_idx`. Clean: `macrodata/msci/msci_gross_tr_wide.parquet` and `msci_price_wide.parquet`.
+
 ---
 
 ## WRDS Datastream schema map

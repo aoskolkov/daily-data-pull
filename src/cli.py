@@ -31,7 +31,7 @@ except ImportError:
 
 from .connection import get_env_credential, wrds_connection
 from . import discovery, normalize, storage, state, catalog
-from .adapters import wrds_sql, datastream, wrds_fut, wrds_fx, wrds_ds_comds, wrds_ds_index, wrds_ds_econ, external, imf as imf_adapter, tic, bis, imf_weo
+from .adapters import wrds_sql, datastream, wrds_fut, wrds_fx, wrds_ds_comds, wrds_ds_index, wrds_ds_econ, external, imf as imf_adapter, tic, bis, imf_weo, msci_web
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
@@ -117,6 +117,8 @@ def do_pull(conn, ds_config: dict, force_full: bool = False) -> None:
         df = bis.pull(conn, ds_config, watermark)
     elif source == "imf_weo":
         df = imf_weo.pull(conn, ds_config, watermark)
+    elif source == "msci_web":
+        df = msci_web.pull(ds_config, watermark)
     else:
         raise ValueError(f"Unknown source '{source}'")
 
@@ -158,7 +160,7 @@ def cmd_pull(args, conn_config: dict, datasets: list[dict], force_full: bool = F
     targets = datasets if getattr(args, "all", False) else [find_dataset(datasets, args.dataset)]
 
     wrds_targets = [ds for ds in targets if ds["source"] in ("wrds_sql", "datastream", "wrds_fut", "wrds_fx", "wrds_ds_comds", "wrds_ds_index", "wrds_ds_econ")]
-    noconn_targets = [ds for ds in targets if ds["source"] in ("external", "imf", "tic", "bis", "imf_weo")]
+    noconn_targets = [ds for ds in targets if ds["source"] in ("external", "imf", "tic", "bis", "imf_weo", "msci_web")]
 
     if wrds_targets:
         with wrds_connection(username=_wrds_username(conn_config)) as conn:
@@ -284,6 +286,7 @@ _CLEAN_SCRIPTS: list[tuple[str, list[str]]] = [
     ("clean/bis_debt_sec.py",   []),
     ("clean/bis_lbs.py",        []),
     ("clean/imf_weo.py",        []),
+    ("clean/msci.py",           []),
 ]
 
 
