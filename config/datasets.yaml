@@ -252,6 +252,38 @@ datasets:
       all bank types. Use discover mode to explore liability-side (C→L) or specific
       counterpart breakdown (5J→specific country code).
 
+  # ── BIS effective exchange rates ─────────────────────────────────────────────
+  # Monthly real (CPI-adjusted) and nominal EER, broad basket (61 economies).
+  # Dimensions: FREQ.EER_TYPE.EER_BASKET.REF_AREA
+  #   EER_TYPE: R=real, N=nominal
+  #   EER_BASKET: B=broad (61 economies, from 1994), N=narrow (27 economies, from 1964)
+  #   REF_AREA: A = all reporting economies
+  # Index: 2020=100. Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
+  - name: bis_eer_real
+    source: bis
+    dataflow: WS_EER
+    key: "M.R.B."
+    start: "1994-01-01"
+    period_format: monthly
+    incremental_key: date
+    note: >
+      BIS real effective exchange rates (REER), broad basket (61 economies), monthly.
+      CPI-deflated. Index 2020=100. All countries with available data.
+      Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
+      Key: FREQ.EER_TYPE.EER_BASKET.REF_AREA — trailing dot = wildcard (all countries).
+
+  - name: bis_eer_nominal
+    source: bis
+    dataflow: WS_EER
+    key: "M.N.N."
+    start: "1964-01-01"
+    period_format: monthly
+    incremental_key: date
+    note: >
+      BIS nominal effective exchange rates (NEER), narrow basket (27 economies), monthly.
+      Index 2020=100. Narrow basket has longer history from 1964 vs broad (1994).
+      Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
+
   # ── MSCI Standard country equity indices ─────────────────────────────────────
   # Monthly, USD gross total return + price index levels.
   # 45 countries (Russia excluded — MSCI suspended Feb 2022; endpoint returns HTTP 500).
@@ -591,6 +623,189 @@ datasets:
       Not all series run to present: BDGBOND./UKMEDYLD end 2019-09 (Datastream
       discontinued; use alternative sources for current DE/UK yields if needed).
       clean/interest_rates.py maps mnemonics to ISO2 country codes and pivots wide.
+
+  # ── Monthly CPI (IMF IFS via Datastream economic series) ─────────────────────
+  # Source: tr_ds_econ.wrds_ecoinfo + ecodata. Mnemonic pattern: {CC}I64...F
+  # = IMF International Financial Statistics line 64, "Consumer Prices, All Items".
+  # 164 country series; 151 active through 2024+. Median history from ~1970.
+  # Index level (not % change) — compute YoY in clean script.
+  # Units: index (base year varies by country, typically 2010=100 or 2015=100).
+  - name: ds_cpi_monthly
+    source: wrds_ds_econ
+    start: "1950-01-01"
+    incremental_key: date_
+    mnemonics:
+      - AFI64...F  # AFGHANISTAN (2004-03 to 2025-01)
+      - ALI64...F  # ALBANIA (1991-01 to 2026-05)
+      - AAI64...F  # ALGERIA (1974-01 to 2026-02)
+      - AGI64...F  # ARGENTINA (2014-01 to 2026-04)
+      - AMI64...F  # ARMENIA (1992-12 to 2026-05)
+      - AEI64...F  # ARUBA (1986-01 to 2020-02)
+      - OEI64...F  # AUSTRIA (1957-01 to 2026-03)
+      - BHI64...F  # BAHAMAS (1972-07 to 2025-05)
+      - BAI64...F  # BAHRAIN (1975-07 to 2026-04)
+      - BSI64...F  # BANGLADESH (1993-07 to 2026-05)
+      - BBI64...F  # BARBADOS (1965-10 to 2026-02)
+      - BGI64...F  # BELGIUM (1955-01 to 2026-04)
+      - BZI64...F  # BELIZE (1990-11 to 2026-03)
+      - BEI64...F  # BENIN (1991-12 to 2026-04)
+      - BTI64...F  # BHUTAN (1979-12 to 2026-02)
+      - BVI64...F  # BOLIVIA (1957-01 to 2026-04)
+      - BPI64...F  # BOSNIA HERZEGOVINA (2005-01 to 2026-03)
+      - BOI64...F  # BOTSWANA (1975-06 to 2026-04)
+      - BRI64...F  # BRAZIL (1979-12 to 2026-05)
+      - BII64...F  # BRUNEI DARUSSALAM (1984-01 to 2026-04)
+      - BLI64...F  # BULGARIA (1991-01 to 2026-05)
+      - UVI64...F  # BURKINO FASO (1959-01 to 2026-04)
+      - BNI64...F  # BURUNDI (1974-01 to 2026-05)
+      - KHI64...F  # CAMBODIA (1994-10 to 2026-04)
+      - CAI64...F  # CAMEROON (1968-01 to 2026-02)
+      - CNI64...F  # CANADA (1914-01 to 2026-04)
+      - CVI64...F  # CAPE VERDE (1992-01 to 2026-04)
+      - CEI64...F  # CENTRAL AFRICA REP. (1981-01 to 2025-12)
+      - CDI64...F  # CHAD (1982-12 to 2026-04)
+      - CLI64...F  # CHILE (1970-01 to 2026-04)
+      - CBI64...F  # COLOMBIA (1955-01 to 2026-05)
+      - COI64...F  # CONGO (1978-02 to 2026-04)
+      - CRI64...F  # COSTA RICA (1957-01 to 2026-04)
+      - IVI64...F  # COTE D'IVOIRE (1960-01 to 2026-04)
+      - CTI64...F  # CROATIA (1986-01 to 2026-03)
+      - CPI64...F  # CYPRUS (1957-01 to 2026-05)
+      - CZI64...F  # CZECH REPUBLIC (1991-01 to 2026-05)
+      - DKI64...F  # DENMARK (1967-01 to 2026-04)
+      - DJI64...F  # DJIBOUTI REP. (1978-10 to 2026-05)
+      - DOI64...F  # DOMINICA (1964-04 to 2025-12)
+      - DRI64...F  # DOMINICAN REPUBLIC (1957-01 to 2026-05)
+      - EDI64...F  # ECUADOR (1957-01 to 2026-04)
+      - EYI64...F  # EGYPT (1957-01 to 2026-05)
+      - ELI64...F  # EL SALVADOR (1957-01 to 2026-05)
+      - EQI64...F  # EQUATORIAL GUINEA (1985-01 to 2025-01)
+      - EOI64...F  # ESTONIA (1992-01 to 2026-04)
+      - ETI64...F  # ETHIOPIA (1966-01 to 2026-03)
+      - FJI64...F  # FIJI ISLANDS (1969-01 to 2026-05)
+      - FNI64...F  # FINLAND (1955-01 to 2026-04)
+      - FRI64...F  # FRANCE (1955-01 to 2026-03)
+      - GAI64...F  # GABON (1963-01 to 2025-12)
+      - GMI64...F  # GAMBIA (1961-01 to 2025-08)
+      - GGI64...F  # GEORGIA (1994-01 to 2026-05)
+      - BDI64...F  # GERMANY (1955-01 to 2026-05)
+      - GHI64...F  # GHANA (1963-03 to 2026-05)
+      - GRI64...F  # GREECE (1955-01 to 2026-04)
+      - GNI64...F  # GRENADA (1976-01 to 2025-12)
+      - GWI64...F  # GUATEMALA (1957-01 to 2026-05)
+      - GEI64...F  # GUINEA (2004-01 to 2026-03)
+      - GII64...F  # GUINEA-BISSAU (1986-02 to 2026-04)
+      - GYI64...F  # GUYANA (1994-01 to 2026-04)
+      - HAI64...F  # HAITI (1957-01 to 2026-04)
+      - HOI64...F  # HONDURAS (1957-01 to 2026-03)
+      - HKI64...F  # HONG KONG (1980-10 to 2026-04)
+      - HNI64...F  # HUNGARY (1976-01 to 2026-03)
+      - ICI64...F  # ICELAND (1955-01 to 2026-05)
+      - INI64...F  # INDIA (1957-01 to 2026-04)
+      - IDI64...F  # INDONESIA (1968-01 to 2026-05)
+      - IAI64...F  # IRAN (1957-01 to 2026-04)
+      - IQI64...F  # IRAQ (2007-01 to 2026-04)
+      - IRI64...F  # IRELAND (1955-02 to 2026-04)
+      - ISI64...F  # ISRAEL (1952-01 to 2026-05)
+      - ITI64...F  # ITALY (1955-01 to 2026-05)
+      - JMI64...F  # JAMAICA (1957-01 to 2026-05)
+      - JPI64...F  # JAPAN (1955-01 to 2026-05)
+      - JOI64...F  # JORDAN (1976-01 to 2026-04)
+      - KZI64...F  # KAZAKHSTAN (1992-12 to 2026-05)
+      - KNI64...F  # KENYA (1968-01 to 2026-03)
+      - KVI64...F  # KOSOVO (2002-05 to 2026-03)
+      - KWI64...F  # KUWAIT (1973-01 to 2026-04)
+      - KYI64...F  # KYRGYZ REPUBLIC (1995-01 to 2026-04)
+      - LAI64...F  # LAOS (1987-12 to 2026-04)
+      - LVI64...F  # LATVIA (1991-01 to 2026-03)
+      - LBI64...F  # LEBANON (2007-12 to 2026-04)
+      - LSI64...F  # LESOTHO (1999-07 to 2026-03)
+      - LYI64...F  # LIBYA (1964-01 to 2026-03)
+      - LNI64...F  # LITHUANIA (1990-12 to 2025-12)
+      - LXI64...F  # LUXEMBOURG (1955-01 to 2026-04)
+      - MOI64...F  # MACAU (1988-01 to 2026-01)
+      - MKI64...F  # MACEDONIA (1993-01 to 2026-03)
+      - MDI64...F  # MADAGASCAR (1964-01 to 2026-03)
+      - MII64...F  # MALAWI (1980-01 to 2026-05)
+      - MYI64...F  # MALAYSIA (1957-01 to 2026-04)
+      - MVI64...F  # MALDIVE ISLANDS (1985-01 to 2026-04)
+      - MLI64...F  # MALI REP. (1987-07 to 2026-04)
+      - MAI64...F  # MALTA (1957-01 to 2026-04)
+      - MRI64...F  # MAURITANIA (1985-07 to 2026-05)
+      - MUI64...F  # MAURITIUS (1962-07 to 2026-04)
+      - MXI64...F  # MEXICO (1957-01 to 2026-05)
+      - MFI64...F  # MOLDOVA (1991-01 to 2026-03)
+      - MGI64...F  # MONGOLIA (1991-01 to 2026-05)
+      - MNI64...F  # MONTENEGRO (2005-01 to 2025-12)
+      - MCI64...F  # MOROCCO (1957-01 to 2026-05)
+      - MZI64...F  # MOZAMBIQUE (1989-12 to 2026-05)
+      - BUI64...F  # MYANMAR (1958-01 to 2020-11)
+      - WAI64...F  # NAMIBIA (2001-12 to 2026-05)
+      - NPI64...F  # NEPAL (1963-07 to 2026-03)
+      - NLI64...F  # NETHERLANDS (1957-01 to 2026-04)
+      - NII64...F  # NICARAGUA (1999-01 to 2026-04)
+      - NRI64...F  # NIGER REP. (1968-01 to 2026-04)
+      - NGI64...F  # NIGERIA (1960-01 to 2026-03)
+      - NWI64...F  # NORWAY (1950-01 to 2026-04)
+      - OMI64...F  # OMAN (2001-01 to 2026-02)
+      - PKI64...F  # PAKISTAN (1957-01 to 2026-05)
+      - PAI64...F  # PANAMA (1974-07 to 2026-03)
+      - PYI64...F  # PARAGUAY (1957-01 to 2026-04)
+      - PEI64...F  # PERU (1957-01 to 2026-05)
+      - PHI64...F  # PHILIPPINES (1957-01 to 2026-05)
+      - POI64...F  # POLAND (1988-01 to 2026-05)
+      - PTI64...F  # PORTUGAL (1955-01 to 2026-03)
+      - QAI64...F  # QATAR (2002-12 to 2025-08)
+      - RMI64...F  # ROMANIA (1990-10 to 2026-03)
+      - RSI64...F  # RUSSIA (1992-01 to 2026-04)
+      - RWI64...F  # RWANDA (1965-04 to 2026-05)
+      - SKI64...F  # SAINT KITTS & NEVIS (1978-01 to 2025-12)
+      - LCI64...F  # SAINT LUCIA (1964-04 to 2025-12)
+      - SVI64...F  # SAINT VINCENT (1975-01 to 2026-04)
+      - WSI64...F  # SAMOA (1967-01 to 2026-05)
+      - SFI64...F  # SAN MARINO (2002-12 to 2025-12)
+      - STI64...F  # SAO TOME (1996-12 to 2026-03)
+      - SII64...F  # SAUDI ARABIA (1980-02 to 2026-05)
+      - SGI64...F  # SENEGAL (1968-01 to 2026-04)
+      - SBI64...F  # SERBIA (1994-02 to 2025-12)
+      - SEI64...F  # SEYCHELLES (1969-06 to 2026-05)
+      - SRI64...F  # SIERRA LEONE (2006-01 to 2026-05)
+      - SPI64...F  # SINGAPORE (1961-01 to 2026-04)
+      - SXI64...F  # SLOVAKIA (1991-01 to 2026-04)
+      - SJI64...F  # SLOVENIA (1980-01 to 2026-04)
+      - SLI64...F  # SOLOMON ISLANDS (1978-01 to 2026-03)
+      - SAI64...F  # SOUTH AFRICA (1957-01 to 2026-04)
+      - KOI64...F  # SOUTH KOREA (1951-08 to 2026-05)
+      - ESI64...F  # SPAIN (1954-03 to 2026-03)
+      - LKI64...F  # SRI LANKA (1957-01 to 2026-05)
+      - SNI64...F  # SUDAN (1957-01 to 2023-02)
+      - SUI64...F  # SURINAM (1969-01 to 2026-04)
+      - SZI64...F  # SWAZILAND (1967-01 to 2020-09)
+      - SDI64...F  # SWEDEN (1955-01 to 2026-04)
+      - SWI64...F  # SWITZERLAND (1955-01 to 2026-04)
+      - TNI64...F  # TANZANIA (1978-03 to 2026-03)
+      - THI64...F  # THAILAND (1965-01 to 2026-03)
+      - TII64...F  # TIMOR (2001-12 to 2026-03)
+      - TOI64...F  # TOGO REP. (1970-01 to 2026-04)
+      - TGI64...F  # TONGA ISLANDS (1990-01 to 2026-03)
+      - TTI64...F  # TRINIDAD & TOBAGO (1957-01 to 2026-04)
+      - TUI64...F  # TUNISIA (1987-07 to 2026-04)
+      - TKI64...F  # TURKEY (1955-01 to 2026-04)
+      - UGI64...F  # UGANDA (1989-09 to 2026-05)
+      - URI64...F  # UKRAINE (1992-01 to 2026-05)
+      - UKI64...F  # UNITED KINGDOM (1955-01 to 2026-05)
+      - USI64...F  # UNITED STATES (1955-01 to 2026-05)
+      - UYI64...F  # URUGUAY (1957-01 to 2026-05)
+      - VII64...F  # VIETNAM (1995-01 to 2026-04)
+      - ZMI64...F  # ZAMBIA (1985-01 to 2026-05)
+      - ZII64...F  # ZIMBABWE (2009-01 to 2023-08)
+    note: >
+      Monthly CPI index levels (IMF IFS line 64, "Consumer Prices All Items") via
+      LSEG Datastream economic series (WRDS tr_ds_econ). 164 country series;
+      ~151 active through 2024+. Mnemonic pattern: {CC}I64...F. Index level
+      (not % change) — YoY inflation computed in clean/cpi_monthly.py.
+      Base year varies by country (typically 2010=100 or 2015=100).
+      wrds_ds_econ adapter normalises output to date_, dsmnemonic, close_.
 
   # ── Precious & base metals (Datastream commodities) ───────────────────────────
   # Source: tr_ds_comds.wrds_cmdy_info + wrds_cmdy_data via wrds_ds_comds adapter.

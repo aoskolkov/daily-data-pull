@@ -282,9 +282,11 @@ _CLEAN_SCRIPTS: list[tuple[str, list[str]]] = [
     ("clean/commodities.py",    []),
     ("clean/equity_indices.py", []),
     ("clean/interest_rates.py", []),
+    ("clean/cpi_monthly.py",   []),
     ("clean/tic.py",            []),
     ("clean/bis_debt_sec.py",   []),
     ("clean/bis_lbs.py",        []),
+    ("clean/bis_eer.py",        []),
     ("clean/imf_weo.py",        []),
     ("clean/msci.py",           []),
 ]
