@@ -2290,3 +2290,79 @@ datasets:
       Country equity price (pi_) and total return (ri) indices from LSEG Datastream
       via WRDS tr_ds_equities. Selection: active index with longest history per country.
       See inline comments for currency and known caveats (GB, FR, BR, PH).
+
+  # ── CFTC Commitments of Traders: FX futures positions by sector ──────────────
+  # Weekly. Positions as of Tuesday, released Friday 3:30pm ET.
+  # Source: CFTC Socrata API (publicreporting.cftc.gov) — no API key needed.
+  # NOTE: CME's own site (cmegroup.com) is Akamai-protected and returns HTTP 403,
+  # so exchange-side data is not scriptable; CFTC is the route for positioning.
+  #
+  # TFF = Traders in Financial Futures. Sector split:
+  #   dealer     Dealer/Intermediary (sell-side)
+  #   asset_mgr  Asset Manager/Institutional
+  #   lev_money  Leveraged Funds (hedge funds — the usual "spec positioning")
+  #   other_rept Other Reportables
+  #   nonrept    Non-Reportable (small traders)
+  # long/short EXCLUDE spreading, which is a separate column.
+  # Net positioning = long - short.
+  # FILTER BY CODE, NOT NAME. Verified 2026-07-24 against the live API:
+  #   - Exchange name changed IMM -> CHICAGO MERCANTILE EXCHANGE on 2000-08-29.
+  #     An exchange filter of "CHICAGO MERCANTILE EXCHANGE" silently drops all
+  #     pre-2000 history (14.5 years for the majors).
+  #   - Contract names are rewritten retroactively: 112741 now reads "NZ DOLLAR"
+  #     for its entire history in contract_market_name, but pre-2022-02-08 rows
+  #     still say "NEW ZEALAND DOLLAR" in market_and_exchange_names.
+  # cftc_contract_market_code is stable across both and unique per exchange.
+  - name: cftc_fx_tff
+    source: cftc
+    report: tff
+    start: "2006-06-13"
+    incremental_key: date
+    contract_codes:
+      - "099741"   # EUR  EURO FX             2006-06-13 –
+      - "097741"   # JPY  JAPANESE YEN        2006-06-13 –
+      - "096742"   # GBP  BRITISH POUND       2006-06-13 –
+      - "092741"   # CHF  SWISS FRANC         2006-06-13 –
+      - "090741"   # CAD  CANADIAN DOLLAR     2006-06-13 –
+      - "232741"   # AUD  AUSTRALIAN DOLLAR   2006-06-13 –
+      - "112741"   # NZD  NZ DOLLAR           2006-06-13 –  (was NEW ZEALAND DOLLAR)
+      - "095741"   # MXN  MEXICAN PESO        2006-06-13 –
+      - "102741"   # BRL  BRAZILIAN REAL      2011-04-05 –
+      - "122741"   # ZAR  SO AFRICAN RAND     2010-03-09 –
+      - "299741"   # EUR/GBP cross           2014-06-10 –
+      - "399741"   # EUR/JPY cross           2017-08-01 –
+      - "089741"   # RUB  RUSSIAN RUBLE       2009-02-10 – 2022-03-15 (dead, sanctions)
+    note: >
+      CFTC Traders in Financial Futures — CME FX, weekly, 13 contracts from 2006-06-13.
+      Sectors: dealer, asset_mgr, lev_money, other_rept, nonrept — each long/short,
+      plus spreading for all but nonrept. long/short EXCLUDE spreading; net = long - short.
+      Russian ruble ends 2022-03-15 (same sanctions cutoff as MSCI Russia).
+      For longer history with coarser categories use cftc_fx_legacy (to 1986).
+
+  # Legacy COT: only commercial / non-commercial / non-reportable, but history
+  # runs to 1986-01-15 — 20 more years than TFF for the majors.
+  - name: cftc_fx_legacy
+    source: cftc
+    report: legacy
+    start: "1986-01-15"
+    incremental_key: date
+    contract_codes:
+      - "099741"   # EUR  1999-01-05 – (see caveat below; 10 stray ECU obs in 1986)
+      - "097741"   # JPY  1986-01-15 –
+      - "096742"   # GBP  1988-04-29 –
+      - "092741"   # CHF  1986-01-15 –
+      - "090741"   # CAD  1986-01-15 –
+      - "232741"   # AUD  1987-01-30 –
+      - "112741"   # NZD  1999-01-05 –
+      - "095741"   # MXN  1995-05-23 –
+      - "102741"   # BRL  1995-11-21 –
+      - "122741"   # ZAR  1998-06-02 –
+      - "089741"   # RUB  1998-05-05 – 2022-03-15
+    note: >
+      CFTC legacy Commitments of Traders — CME FX, weekly from 1986-01-15.
+      Categories: noncomm (speculators), comm (hedgers), nonrept (small traders).
+      CAVEAT on code 099741 (EURO FX): the euro contract begins 1999-01-05. The
+      same code also carries 10 observations from 1986-01-15 to 1986-08-29 that are
+      the EUROPEAN CURRENCY UNIT (ECU) contract, followed by a 12-year gap. These
+      are a different instrument — drop them rather than splicing into a EUR series.
+      clean/cftc_fx.py excludes them.
