@@ -24,7 +24,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "imf_weo"
-OUT  = ROOT / "output"
+OUT  = ROOT / "macrodata" / "imf_weo"
 
 
 def load() -> pd.DataFrame:

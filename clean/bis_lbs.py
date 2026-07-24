@@ -7,7 +7,7 @@ Filter: total cross-border claims, all instruments, all-currency USD-equivalent,
         immediate counterparty basis (N).
 
 Output:
-  macrodata/bis_lbs_wide.{parquet,csv}   date × reporting-country ISO2, USD millions
+  macrodata/bis_lbs/bis_lbs_wide.{parquet,csv}   date × reporting-country ISO2, USD millions
 
 Usage:
   python clean/bis_lbs.py
@@ -22,7 +22,7 @@ from pathlib import Path
 import pandas as pd
 
 SRC = Path("data/bis_lbs")
-OUT = Path("macrodata/bis_lbs_wide")
+OUT = Path("macrodata/bis_lbs/bis_lbs_wide")
 
 
 def parse_args() -> argparse.Namespace:

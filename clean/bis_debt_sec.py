@@ -31,7 +31,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "bis_debt_sec"
-OUT  = ROOT / "output"
+OUT  = ROOT / "macrodata" / "bis_debt_sec"
 
 _ISO2_RE = r'^[A-Z]{2}$'   # strict 2-letter codes; excludes aggregates like 1C, 3P, 4T
 
