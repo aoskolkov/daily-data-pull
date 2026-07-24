@@ -19,7 +19,7 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "tic_foreign_holders"
-OUT  = ROOT / "output"
+OUT  = ROOT / "macrodata" / "tic"
 
 
 def load() -> pd.DataFrame:
