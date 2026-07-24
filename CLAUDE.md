@@ -83,6 +83,17 @@ BIS Statistics REST API (`stats.bis.org/api/v1`). Config: `dataflow`, `key` (dot
 ### tic
 US Treasury TIC Major Foreign Holders. Config: `start`. No WRDS connection needed. Fetches two files: `mfhhis01.txt` from `https://treasury.gov/resource-center/data-chart-center/tic/Documents/` (full archive, 2000–present, 26 year-blocks in one tab-delimited file) and `mfh.txt` from `ticdata.treasury.gov` (current rolling window for most recent months). Output: `date, country, holdings_bln_usd`.
 
+### cftc
+CFTC Commitments of Traders — futures positions by trader category. No WRDS connection needed. Config: `report` (`tff`/`legacy`/`disagg`), `contract_codes` (list), `start`, optional `dataset_id` override. Source: Socrata API at `publicreporting.cftc.gov` (no API key; an app token only raises the anonymous rate limit). Weekly — positions as of Tuesday, released Friday 3:30pm ET.
+
+Reports: `tff` = Traders in Financial Futures, dataset `gpe5-46if`, 2006-06-13– — the one for FX/rates/equity-index. Sectors: dealer, asset_mgr, lev_money, other_rept, nonrept. `legacy` = dataset `6dca-aqww`, 1986-01-15– — only noncomm/comm/nonrept but 20 extra years. `disagg` = dataset `72hh-3qpy`, **physical commodities only, contains no FX**.
+
+**ALWAYS filter with `contract_codes`, never contract or exchange names** (verified 2026-07-24): exchange names changed from `INTERNATIONAL MONETARY MARKET` to `CHICAGO MERCANTILE EXCHANGE` on 2000-08-29, so an exchange filter silently drops all pre-2000 history (14.5 years for the majors); and contract names are rewritten *retroactively* — code `112741` now reads `NZ DOLLAR` across its entire history in `contract_market_name`, while pre-2022-02-08 rows still say `NEW ZEALAND DOLLAR` in `market_and_exchange_names`. Codes are stable across both renames and unique per exchange.
+
+CME FX codes: `099741` EUR, `097741` JPY, `096742` GBP, `092741` CHF, `090741` CAD, `232741` AUD, `112741` NZD, `095741` MXN, `102741` BRL, `122741` ZAR, `089741` RUB (dead 2022-03-15), `299741` EUR/GBP, `399741` EUR/JPY.
+
+`long`/`short` **exclude** spreading, which is reported separately; net = long − short. Identities that must hold (both verified): sector nets sum to 0, and sum of longs + all spreading = open interest. Clean: `macrodata/cftc_fx/` — `{tff,legacy}_<sector>_net_wide.parquet` (date × ISO currency), plus `_open_interest_wide`, `cftc_fx_long`, `cftc_fx_meta.csv`.
+
 ### msci_web
 MSCI Standard (Large+Mid Cap) country equity index levels. No WRDS connection needed. Config: `start` (default `1990-01-01`), `frequency` (`M` monthly default, `Q` quarterly). Uses MSCI's public webapp endpoint (`www.msci.com/webapp/indexperf/charts`) — no API key required. Downloads both gross total return (`priceLevel=41`) and price return (`priceLevel=0`) in USD (`currency=15`). Batches 45 countries across two requests (batch size 20) with a 1-second pause between. **Russia excluded**: MSCI suspended the index post-Feb 2022, endpoint returns HTTP 500. XLS response has copyright rows after the data — filtered via `pd.to_datetime(..., errors='coerce').dropna()`. Output: `date, iso2, gross_tr, price_idx`. Clean: `macrodata/msci/msci_gross_tr_wide.parquet` and `msci_price_wide.parquet`.
 
@@ -160,6 +171,9 @@ wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= 
 - **TIC historical URL** — The archive is at `treasury.gov` (not `ticdata.treasury.gov`), filename `mfhhis01.txt`. The file `mfhis.txt` and `mfhhis01.csv` also exist at the same path but `mfhhis01.txt` is most reliable.
 - **WEO subject code drift** — IMF renumbered fiscal codes: `GGREV→GGR_NGDP`, `GGEXP→GGX_NGDP`, `GGPB→GGXONLB`. If subjects return 0 rows, verify codes against the downloaded `.xls` file with `pd.read_csv(path, sep='\t', encoding='utf-16-le')['WEO Subject Code'].unique()`.
 - **BIS dataflow naming** — `WS_DEBT_SEC2` was renamed to `WS_DEBT_SEC2_PUB`. Always verify dataflow IDs with `python wrdsdl.py discover bis --dataflow <ID>` before building keys.
+- **CME exchange data** — `cmegroup.com` is Akamai-protected and returns HTTP 403 to scripted requests (both the settlements API and plain product pages), verified 2026-07-24. Deep history is behind CME DataMine (paid). For positioning data use the `cftc` adapter instead; the CFTC publishes who holds CME futures positions.
+- **CFTC `EURO FX` code 099741 pre-1999** — carries 10 observations from 1986-01-15 to 1986-08-29 that are the **European Currency Unit (ECU)** contract, then a 12-year gap before the euro contract starts 1999-01-05. Different instrument; `clean/cftc_fx.py` drops them. Do not splice into a EUR series.
+- **CFTC New Zealand dollar** — searching for `NEW ZEALAND` in `contract_market_name` returns nothing; the contract (code `112741`) is named `NZ DOLLAR` there across all history. Full TFF history runs 2006-06-13–present.
 - **Germany / UK 10Y bond yields** — `BDGBOND.` (DE) and `UKMEDYLD` (UK) both end 2019-09 in `tr_ds_econ`. Datastream stopped updating these series. Current DE/UK yields need an alternative source (e.g. ECB, BoE, or FRED).
 
 ---
