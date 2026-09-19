@@ -291,6 +291,7 @@ _CLEAN_SCRIPTS: list[tuple[str, list[str]]] = [
     ("clean/inflation.py",      []),
     ("clean/macro.py",          []),
     ("clean/capital_flows.py",  []),
+    ("clean/trade.py",          []),
     ("clean/bilateral.py",      []),
     ("clean/vol.py",            []),
     ("clean/commodities.py",    []),

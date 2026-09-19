@@ -596,8 +596,9 @@ datasets:
     lookback_days: 1095      # BOP revises several years back
     dims:
       COUNTRY: ""
-      BOP_ACCOUNTING_ENTRY: [NNAFANIL_T, A_NFA_T, L_NIL_T, A_T, NETCD_T]
-      INDICATOR: [D_F, P_F, P_F5, P_F3, O_F, R_F, CAB, KAB, FAB, EO]
+      BOP_ACCOUNTING_ENTRY: [NNAFANIL_T, A_NFA_T, L_NIL_T, A_T, NETCD_T, CD_T, DB_T]
+      INDICATOR: [D_F, P_F, P_F5, P_F3, O_F, R_F, CAB, KAB, FAB, EO,
+                  G, S, GS, IN1, IN2, SC, SD, SG, SH, SI, SJ]
       UNIT: USD
       FREQUENCY: A
     label_dims: [BOP_ACCOUNTING_ENTRY, INDICATOR]
@@ -620,10 +621,47 @@ datasets:
       NETCD_T.KAB: ka_balance
       NNAFANIL_T.FAB: fa_balance
       NETCD_T.EO: errors_omissions
+      # Current account detail: credit = exports/receipts, debit = imports/payments
+      NETCD_T.G: goods_net
+      CD_T.G: goods_exports
+      DB_T.G: goods_imports
+      NETCD_T.S: services_net
+      CD_T.S: services_exports
+      DB_T.S: services_imports
+      NETCD_T.GS: goods_services_net
+      CD_T.GS: goods_services_exports
+      DB_T.GS: goods_services_imports
+      NETCD_T.IN1: primary_income_net
+      CD_T.IN1: primary_income_credit
+      DB_T.IN1: primary_income_debit
+      NETCD_T.IN2: secondary_income_net
+      CD_T.IN2: secondary_income_credit
+      DB_T.IN2: secondary_income_debit
+      # Services by category
+      NETCD_T.SC: services_transport_net
+      CD_T.SC: services_transport_exports
+      DB_T.SC: services_transport_imports
+      NETCD_T.SD: services_travel_net
+      CD_T.SD: services_travel_exports
+      DB_T.SD: services_travel_imports
+      NETCD_T.SG: services_financial_net
+      CD_T.SG: services_financial_exports
+      DB_T.SG: services_financial_imports
+      NETCD_T.SH: services_ip_charges_net
+      CD_T.SH: services_ip_charges_exports
+      DB_T.SH: services_ip_charges_imports
+      NETCD_T.SI: services_telecom_it_net
+      CD_T.SI: services_telecom_it_exports
+      DB_T.SI: services_telecom_it_imports
+      NETCD_T.SJ: services_other_business_net
+      CD_T.SJ: services_other_business_exports
+      DB_T.SJ: services_other_business_imports
     note: >
       IMF Balance of Payments (BPM6), annual, ~205 economies, 1980–present.
-      Financial account by functional category (assets / liabilities / net) plus
-      current, capital and financial account balances. Portfolio equity/debt
+      Financial account by functional category (assets / liabilities / net),
+      current-account detail (goods, services incl. transport/travel/financial/IP/
+      telecom-IT/other business, primary and secondary income) as credit / debit /
+      net, plus current, capital and financial account balances. Portfolio equity/debt
       nets are not published separately; clean/capital_flows.py derives them.
       Quarterly data exist too (FREQUENCY: Q, ~157 economies).
 
@@ -658,6 +696,76 @@ datasets:
       NETAL_P.NIIP: niip_pos
     note: >
       IMF International Investment Position, annual, ~181 economies, 1980–present.
+
+  # ── IMF trade in goods, country totals (ITG) ────────────────────────────────
+  # Headline series only: exports FOB and imports CIF, both in USD. ITG also has
+  # domestic-currency values (~35 countries), price/volume indices and period-over-
+  # period changes — add TYPE_OF_TRANSFORMATION codes (FOB_XDC, CIF_IX, ...) for those.
+  # Monthly covers 108 economies, quarterly 130, annual 191, so the annual dataset
+  # is the one with full country coverage.
+  - name: imf_trade_goods_m
+    source: imf
+    dataflow: ITG
+    start: "1957"
+    incremental_key: date
+    lookback_days: 365       # monthly trade is revised for several months
+    dims:
+      COUNTRY: ""
+      INDICATOR: [XG, MG]
+      TYPE_OF_TRANSFORMATION: [FOB_USD, CIF_USD]
+      FREQUENCY: M
+    label_dims: [INDICATOR, TYPE_OF_TRANSFORMATION]
+    labels:
+      XG.FOB_USD: exports_fob_usd
+      MG.CIF_USD: imports_cif_usd
+    note: >
+      IMF International Trade in Goods, monthly, ~108 economies, 1957-01 onward.
+      Exports free on board and imports cost-insurance-freight, USD. Trade balance
+      is derived in clean/trade.py. Compare wb_exports / wb_imports (annual, BPM6
+      basis, includes services) and imf_bop goods credits/debits.
+
+  - name: imf_trade_goods_a
+    source: imf
+    dataflow: ITG
+    start: "1948"
+    incremental_key: date
+    lookback_days: 1095      # annual trade is revised years back
+    dims:
+      COUNTRY: ""
+      INDICATOR: [XG, MG]
+      TYPE_OF_TRANSFORMATION: [FOB_USD, CIF_USD]
+      FREQUENCY: A
+    label_dims: [INDICATOR, TYPE_OF_TRANSFORMATION]
+    labels:
+      XG.FOB_USD: exports_fob_usd
+      MG.CIF_USD: imports_cif_usd
+    note: >
+      IMF International Trade in Goods, annual, 191 economies, 1948–present.
+
+  # ── IMF bilateral trade in goods (IMTS — the former DOTS) ───────────────────
+  # Reporter x partner matrix. One request per indicator: each is ~1.5M rows and
+  # takes ~5 minutes. Quarterly (Q) and monthly (M) exist too and are much larger.
+  # TBG_USD (trade balance) is published as well but is exports - imports.
+  - name: imf_trade_bilateral
+    source: imf
+    dataflow: IMTS
+    start: "1948"
+    incremental_key: date
+    lookback_days: 1095
+    chunk_by: INDICATOR
+    dims:
+      COUNTRY: ""                  # reporter
+      INDICATOR: [XG_FOB_USD, MG_CIF_USD]
+      COUNTERPART_COUNTRY: ""      # partner
+      FREQUENCY: A
+    labels:
+      XG_FOB_USD: exports_fob_usd
+      MG_CIF_USD: imports_cif_usd
+    note: >
+      IMF International Merchandise Trade Statistics by partner economy, annual,
+      1948–present, ~237 reporters x ~245 partners (the successor to Direction of
+      Trade Statistics). ~3M rows, ~10 minutes to pull. Partner codes include
+      aggregates (e.g. W00 world); clean/trade.py keeps ISO3 economies.
 
   # ── IMF PIP (formerly CPIS): bilateral portfolio investment positions ───────
   - name: imf_cpis
