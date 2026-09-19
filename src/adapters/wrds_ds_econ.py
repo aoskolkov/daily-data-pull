@@ -49,8 +49,10 @@ def pull(conn, config: dict, watermark=None) -> pd.DataFrame:
         else f"AND e.perioddate >= '{start}'"
     )
 
+    # ecodata is point-in-time: every revision of an observation is its own row
+    # (changeseq 0 = first release, then 1, 2, ...). Keep only the latest vintage.
     sql = f"""
-        SELECT
+        SELECT DISTINCT ON (i.dsmnemonic, e.perioddate)
             i.dsmnemonic,
             e.perioddate  AS date_,
             e.series_value AS close_
@@ -58,7 +60,7 @@ def pull(conn, config: dict, watermark=None) -> pd.DataFrame:
         JOIN tr_ds_econ.ecodata e ON i.ecoseriesid = e.ecoseriesid
         WHERE i.dsmnemonic IN ({mnem_csv})
           {wm_clause}
-        ORDER BY i.dsmnemonic, e.perioddate
+        ORDER BY i.dsmnemonic, e.perioddate, e.changeseq DESC, e.msgseq DESC
     """
 
     print(f"  Querying tr_ds_econ ({len(mnemonics)} mnemonics) from {watermark or start}...")

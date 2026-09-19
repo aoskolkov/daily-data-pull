@@ -90,6 +90,13 @@ def do_pull(conn, ds_config: dict, force_full: bool = False) -> None:
         watermark = state.load_watermark(name, storage_root)
         if watermark:
             print(f"  Incremental from watermark: {watermark}")
+            # The watermark is the max date across all series, so late reporters
+            # and revisions behind it are never fetched. Re-pull a trailing window;
+            # storage.write_parquet(append=True) replaces it in place.
+            lookback = int(ds_config.get("lookback_days", 0))
+            if lookback:
+                watermark = str((pd.Timestamp(watermark) - pd.Timedelta(days=lookback)).date())
+                print(f"  Lookback {lookback}d -> re-pulling from {watermark}")
 
     print(f"Pulling: {name}  (source={source})")
 
@@ -134,7 +141,10 @@ def do_pull(conn, ds_config: dict, force_full: bool = False) -> None:
 
     print(f"  {len(df):,} rows fetched.")
 
-    storage.write_parquet(df, name, partition_col=date_col, storage_root=storage_root)
+    storage.write_parquet(
+        df, name, partition_col=date_col, storage_root=storage_root,
+        append=watermark is not None,
+    )
 
     date_series = pd.to_datetime(df[date_col], errors="coerce") if date_col in df.columns else pd.Series(dtype="datetime64[ns]")
     meta: dict = {

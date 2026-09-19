@@ -2,6 +2,9 @@ defaults:
   storage_root: ./data
   output_format: parquet
   chunk_rows: 500_000
+  # Incremental pulls re-fetch this many days before the watermark, to pick up
+  # late reporters and revisions. Override per dataset for lagging panels.
+  lookback_days: 14
 
 datasets:
   # ── FX spot rates ───────────────────────────────────────────────────────────
@@ -63,6 +66,7 @@ datasets:
     note: >
       NYMEX WTI crude oil futures term structure, nearby 1-12, from individual
       contracts (NWS{MMYY}) in WRDS Datastream tr_ds_fut library.
+      STALE: WRDS stopped updating all NWS and NCL contracts after 2026-04-03.
       Output: long format with columns date_, nearby (1-12), price, contrdate.
       clean/oil_curve.py pivots to wide (tenor columns M1-M12) and computes
       slope/spreads. Units: USD/barrel.
@@ -184,10 +188,12 @@ datasets:
     source: tic
     start: "2000-01-01"
     incremental_key: date
+    lookback_days: 365      # SLT table revises the trailing 12 months
     note: >
       US Treasury Major Foreign Holders of Treasury Securities.
       Monthly, ~30 countries, USD billions, 2000–present.
-      Source: ticdata.treasury.gov mfh.txt, updated monthly.
+      Source: treasury.gov mfhhis01.txt (archive) + ticdata.treasury.gov
+      slt_table5.txt (rolling 13 months), updated monthly.
 
   # ── BIS central bank policy rates ───────────────────────────────────────────
   # Daily, 39 countries (ISO2) + XM (Eurozone), from ~1946 (US) / 1990s (EM).
@@ -224,6 +230,7 @@ datasets:
     key: Q.....C.A..TO1.C.A.A.A.A.C
     start: "1993-01-01"
     incremental_key: date
+    lookback_days: 365      # quarterly revisions
     note: >
       BIS international debt securities, all sectors, total-currency amounts outstanding,
       quarterly. Source: BIS Statistics API (stats.bis.org) dataflow WS_DEBT_SEC2_PUB.
@@ -243,6 +250,7 @@ datasets:
     key: Q.S.C.A.TO1.A.5J.A
     start: "2000-01-01"
     incremental_key: date
+    lookback_days: 365      # quarterly revisions
     note: >
       BIS Locational Banking Statistics, total cross-border claims by reporting country.
       Quarterly, ~50 reporting countries, USD millions.
@@ -266,6 +274,7 @@ datasets:
     start: "1994-01-01"
     period_format: monthly
     incremental_key: date
+    lookback_days: 62       # monthly
     note: >
       BIS real effective exchange rates (REER), broad basket (61 economies), monthly.
       CPI-deflated. Index 2020=100. All countries with available data.
@@ -279,6 +288,7 @@ datasets:
     start: "1964-01-01"
     period_format: monthly
     incremental_key: date
+    lookback_days: 62       # monthly
     note: >
       BIS nominal effective exchange rates (NEER), narrow basket (27 economies), monthly.
       Index 2020=100. Narrow basket has longer history from 1964 vs broad (1994).
@@ -293,6 +303,7 @@ datasets:
     start: "1990-01-01"
     frequency: M
     incremental_key: date
+    lookback_days: 62       # monthly
 
   # ── IMF World Economic Outlook ────────────────────────────────────────────────
   # Biannual (April + October). ~190 countries from ~1980 + 5-year projections.
@@ -305,6 +316,7 @@ datasets:
     edition: 2        # 1=April, 2=October
     start: "1980"
     incremental_key: date
+    lookback_days: 0        # vintage-based; change year/edition and `refresh` instead
     subjects:
       # GDP
       - NGDPD        # GDP current USD (billions)
@@ -567,6 +579,7 @@ datasets:
     source: wrds_ds_econ
     start: "1950-01-01"
     incremental_key: date_
+    lookback_days: 730      # quarterly, late reporters + revisions
     mnemonics:
       # United States
       - USTRCN10   # Treasury constant maturity 10Y (1953–present)
@@ -634,6 +647,7 @@ datasets:
     source: wrds_ds_econ
     start: "1950-01-01"
     incremental_key: date_
+    lookback_days: 365      # monthly, ragged edge
     mnemonics:
       - AFI64...F  # AFGHANISTAN (2004-03 to 2025-01)
       - ALI64...F  # ALBANIA (1991-01 to 2026-05)
@@ -825,6 +839,7 @@ datasets:
     source: wrds_ds_econ
     start: "1970-01-01"
     incremental_key: date_
+    lookback_days: 365      # late reporters trail by up to ~8 months
     mnemonics:
       # --- ca (BOP: CURRENT ACCOUNT) [121 countries] ---
       - AFI109BXF  # AFGHANISTAN (2008-04 to 2021-01)
