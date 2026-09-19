@@ -212,3 +212,11 @@ Parquet preserves column dtypes (dates stay dates, floats stay floats). Each `.p
 - **TIC country list changes over time**: `mfhhis01.txt` covers 2000–present with ~57 countries, but the set of reported countries has changed (new countries are added when their holdings cross a reporting threshold). The `All Other` residual captures the rest.
 - **IMF WEO subject code changes**: The codes in the WEO bulk file change between editions. `GGR_NGDP`/`GGX_NGDP`/`GGXONLB` are the correct codes as of Oct 2024; older editions used `GGREV`/`GGEXP`/`GGPB`.
 - **World Bank fiscal coverage** (`wb_govt_revenue`, `wb_govt_expenditure`) is sparse — around 35 countries with data mainly after 2000. Use IMF WEO (`GGR_NGDP`, `GGX_NGDP`) for broader coverage (196 countries).
+
+---
+
+## License
+
+The code in this repository is released under the [MIT License](LICENSE).
+
+The license covers the code only, not the data it downloads. Each source keeps its own terms: WRDS and LSEG Datastream data are licensed to your institution's subscription and may not be redistributed, and the IMF, World Bank, BIS, FRED, US Treasury, CFTC and MSCI data are subject to their providers' terms of use. That is why `data/`, `macrodata/` and `downloads/` are never committed.
