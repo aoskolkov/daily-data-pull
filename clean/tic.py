@@ -2,11 +2,13 @@
 Clean script for US Treasury TIC Major Foreign Holders data.
 
 Input:  data/tic_foreign_holders/
-Output: macrodata/tic_holdings_wide.{parquet,csv}   — date × country (billions USD)
-        macrodata/tic_meta.csv
+Output: macrodata/tic/tic_holdings_wide.{parquet,csv}   — date × country (billions USD)
+        macrodata/tic/tic_meta.csv
 
-Source: mfhhis01.txt (2000–present historical archive) + mfh.txt (rolling current).
-Holdings in billions USD. ~57 countries, monthly.
+Source: mfhhis01.txt (historical archive, 2000 to last full year) + slt_table5.txt
+(SLT Table 5, rolling 13 months; wins where they overlap). mfh.txt is no longer used.
+Holdings in billions USD. 53 columns (countries plus the groupings "Oil Exporters"
+and "Carib Bnkng Ctrs"), monthly from 2000-03.
 """
 
 from __future__ import annotations
@@ -68,8 +70,8 @@ def main(argv=None) -> None:
         "date_min":    str(date_min),
         "date_max":    str(date_max),
         "units":       "billions USD",
-        "source":      "US Treasury TIC Major Foreign Holders (mfh.txt)",
-        "note":        "Historical archive from mfhhis01.txt (2000-present) + current mfh.txt",
+        "source":      "US Treasury TIC Major Foreign Holders (mfhhis01.txt + slt_table5.txt)",
+        "note":        "Historical archive mfhhis01.txt + rolling SLT Table 5 (slt_table5.txt, wins on overlap)",
     }])
     meta.to_csv(OUT / "tic_meta.csv", index=False)
     print("  Saved tic_meta.csv")

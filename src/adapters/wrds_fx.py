@@ -25,19 +25,22 @@ ratetypecodes (selection)
   9MFD  = 9-month forward
   1YFD  = 1-year (12-month) forward
   2YFD  = 2-year forward
-  (full set runs to 20YF)
+  (full set runs to 20YF; also 15MF/18MF/21MF/30MF and CNH offshore OS*, O10M...)
 
 Config keys (datasets.yaml)
 -----------------------------
   source: wrds_fx
-  currencies:   [EUR, GBP, JPY, CHF, CAD, AUD, NZD]  # non-USD currencies
-  tenors:       [SPOT, 1MFD, 3MFD, 6MFD, 1YFD]        # ratetypecodes to pull
+  currencies:   [EUR, GBP, JPY, CHF, CAD, AUD, NZD]  # vs USD; omit = all pairs, incl. crosses
+  tenors:       [SPOT, 1MFD, 3MFD, 6MFD, 1YFD]        # ratetypecodes; omit = all
   start:        "1990-01-01"
   incremental_key: exratedate
 
 Output columns
 --------------
-  exratedate, fromcurrcode, tocurrcode, ratetypecode, midrate, bidrate, offerrate
+  fromcurrcode, tocurrcode, ratetypecode, exratedesc, exratedate, midrate, bidrate, offerrate
+  midrate = units of fromcurrcode per 1 unit of tocurrcode, or per 100/1,000/10,000
+  when exratedesc says so (e.g. "US $ TO 100 JAPANESE YEN"). Raw Datastream
+  quotes; clean/fx_forward.py converts to USD per unit of currency.
 """
 
 from __future__ import annotations
@@ -58,13 +61,14 @@ def pull(conn: wrds.Connection, config: dict, watermark=None) -> pd.DataFrame:
     Pull FX spot and/or forward rates from WRDS Datastream.
 
     Config keys:
-      currencies:  [EUR, GBP, JPY, ...]   # non-USD ISO codes (matched vs USD in either direction)
-      tenors:      [SPOT, 1MFD, 3MFD, ...] # ratetypecodes (default: SPOT, 1MFD, 3MFD, 6MFD, 1YFD)
+      currencies:  [EUR, GBP, JPY, ...]   # non-USD ISO codes (matched vs USD in either direction);
+                                          # empty/omitted = no filter (all pairs, incl. crosses)
+      tenors:      [SPOT, 1MFD, 3MFD, ...] # ratetypecodes; empty/omitted = all tenors
       start:       "1990-01-01"
-      rate_field:  midrate                 # column to pull (default: midrate)
 
-    Returns long DataFrame: exratedate, fromcurrcode, tocurrcode, ratetypecode,
-                             midrate, bidrate, offerrate
+    Returns long DataFrame: fromcurrcode, tocurrcode, ratetypecode, exratedesc,
+                             exratedate, midrate, bidrate, offerrate
+    (rows with NULL midrate are dropped; mid, bid and offer are always returned)
     """
     currencies: list[str] = config.get("currencies", [])
     tenors: list[str] = config.get("tenors", [])

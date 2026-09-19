@@ -44,7 +44,8 @@ def _pull_worldbank(config: dict, watermark=None) -> pd.DataFrame:
 
     Output schema: date, country_name, iso2c, iso3c, indicator, value, source
     Date is set to Jan 1 of the year (World Bank data is annual).
-    Regional aggregates are excluded — only sovereign countries are kept.
+    Regional/income aggregates are excluded — every World Bank economy is kept,
+    including non-sovereign ones (e.g. ABW, HKG, MAC, CUW); ~215 in total.
 
     Indicators useful for inflation:
       FP.CPI.TOTL     CPI index (2010 = 100)

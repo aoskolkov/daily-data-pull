@@ -5,6 +5,9 @@ Builds a nearby-ranked term structure from individual contracts:
   - Nearby 1 = front month (soonest to expire contract that has not yet expired)
   - Nearby 2 = next-to-expire, etc.
   - Up to max_nearby contracts per day
+  - One listing per contract month: if the prefix matches several listings with
+    the same last trading day (ICE Brent LLC has ~5), one row per (date,
+    lasttrddate) is kept (lowest price), so nearby 1..N are distinct months
 
 Uses tr_ds_fut.wrds_contract_info (contract metadata) +
      tr_ds_fut.wrds_fut_contract (daily settlement prices).
@@ -39,7 +42,7 @@ def pull(conn: wrds.Connection, config: dict, watermark=None) -> pd.DataFrame:
     Returns a long DataFrame with columns:
       date_, nearby (1..max_nearby), price, contrdate (MMYY), lasttrddate
 
-    The clean script converts nearby integer to tenor label (M1, M2, ...) and
+    The clean script converts nearby integer to tenor label (F1, F2, ...) and
     pivots to wide.
     """
     prefix   = config.get("dsmnem_prefix", "")
@@ -64,8 +67,11 @@ def pull(conn: wrds.Connection, config: dict, watermark=None) -> pd.DataFrame:
             WHERE UPPER(dsmnem) LIKE UPPER('{prefix}%%')
               AND isocurrcode = '{currency}'
         ),
+        -- One row per contract month: a prefix can match several listings of the
+        -- same contract (ICE Brent LLC has ~5 per month), which would otherwise
+        -- fill nearby 1-5 with the same contract.
         raw AS (
-            SELECT
+            SELECT DISTINCT ON (fc.date_, c.lasttrddate)
                 fc.date_,
                 c.contrdate,
                 c.lasttrddate,
@@ -74,6 +80,7 @@ def pull(conn: wrds.Connection, config: dict, watermark=None) -> pd.DataFrame:
             JOIN contracts c ON fc.futcode = c.futcode
             WHERE fc.{pcol} IS NOT NULL
               {wm_clause}
+            ORDER BY fc.date_, c.lasttrddate, fc.{pcol}
         ),
         ranked AS (
             SELECT

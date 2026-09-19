@@ -22,9 +22,12 @@ datasets:
   # ── FX forward rates (Datastream via WRDS) ─────────────────────────────────
   # Source: tr_ds_equities.ds2fxcode joined to ds2fxrate (LSEG Datastream).
   # 1578 rate codes; forward tenors: 1W, 1M, 3M, 6M, 9M, 1Y, 2Y, ... 20Y.
-  # Data runs 1964-12-30 to present. Currencies vs USD in either direction.
+  # Data runs 1964-12-30 to present. No currency filter: ~700 of the ~1570 codes
+  # are crosses not involving USD (vs EUR, GBP, CHF, ...).
   # Output: long format with columns exratedate, fromcurrcode, tocurrcode,
-  #         ratetypecode, midrate, bidrate, offerrate.
+  #         ratetypecode, exratedesc, midrate, bidrate, offerrate.
+  # midrate = units of fromcurrcode per 1 unit of tocurrcode (per 100/1,000/10,000
+  #   when exratedesc says "TO 100 ..." etc.).
   - name: fx_forward
     source: wrds_fx
     start: "1964-12-30"
@@ -32,9 +35,11 @@ datasets:
     note: >
       All FX rates (spot + all forward tenors, all currencies) from LSEG Datastream
       via WRDS tr_ds_equities.ds2fxcode + ds2fxrate. 1578 rate codes, 1964–present.
-      Tenors: SPOT, ONFD, TNFD, SNFD, 1WFD, 2WFD, 3WFD, 1MFD–11MF, 1YFD–10YF, 12YF, 15YF, 20YF.
-      Direction varies by pair (some USD→CCY, some CCY→USD per Datastream convention).
-      clean/fx_forward.py normalises to a consistent quoting convention.
+      Tenors: SPOT, ONFD, TNFD, SNFD, 1WFD, 2WFD, 3WFD, 1MFD–11MF, 15MF, 18MF, 21MF, 30MF,
+      1YFD–10YF, 12YF, 15YF, 20YF, plus CNH offshore codes (OS*, O10M, O11M, O18M).
+      Includes non-USD crosses. Raw midrate = units of fromcurrcode per 1 (or per
+      100/1,000/10,000, see exratedesc) unit of tocurrcode.
+      clean/fx_forward.py normalises to USD per unit of currency.
 
   # ── WTI crude spot (Datastream commodities) ─────────────────────────────────
   # NCLCS00 is a Datastream terminal mnemonic NOT available on WRDS (verified 2026-06-25).
@@ -67,17 +72,17 @@ datasets:
       NYMEX WTI crude oil futures term structure, nearby 1-12, from individual
       contracts (NWS{MMYY}) in WRDS Datastream tr_ds_fut library.
       STALE: WRDS stopped updating all NWS and NCL contracts after 2026-04-03.
-      Output: long format with columns date_, nearby (1-12), price, contrdate.
-      clean/oil_curve.py pivots to wide (tenor columns M1-M12) and computes
+      Output: long format with columns date_, nearby (1-12), price, contrdate, lasttrddate.
+      clean/oil_curve.py pivots to wide (tenor columns F1-F12) and computes
       slope/spreads. Units: USD/barrel.
 
   # ── Brent futures term structure (ICE nearby contracts) ─────────────────────
-  # ICE Brent individual contracts: LBZCS00-LBZCS05 are DEAD (discontinued series).
-  # The prefix for active ICE Brent individual contracts needs verification.
-  # Known dead prefix: LBZCS (ICE-BRENT CRUDE OIL NX)
-  # Candidate active prefix: search wrds_contract_info for Brent + USD.
-  # Until verified, leave dsmnem_prefix empty so adapter raises a clear error.
-  # To find: run python wrdsdl.py discover tr_ds_fut --table wrds_contract_info
+  # Active ICE Brent individual contracts use prefix LLC (verified 2026-06-25);
+  # data runs 2003-09-08 to present. LLC matches ~5 listings per contract month;
+  # the wrds_fut adapter keeps one row per (date, last trading day), so nearby
+  # 1-12 are 12 distinct contract months.
+  # Known dead prefix: LBZCS (ICE-BRENT CRUDE OIL NX), LBZCS00-LBZCS05 discontinued.
+  # To list other Brent prefixes: python wrdsdl.py discover tr_ds_fut --table wrds_contract_info
   #   then: SELECT DISTINCT LEFT(dsmnem,3), contrname FROM wrds_contract_info
   #          WHERE UPPER(contrname) LIKE '%BRENT%' AND isocurrcode='USD' LIMIT 20
   - name: ds_brent_curve
@@ -181,9 +186,11 @@ datasets:
   #   dataset: CPI      # old ID, broken
 
   # ── US Treasury TIC: foreign holdings of US Treasuries ───────────────────────
-  # Monthly, by country, back to 2000. Holdings in billions of USD.
+  # Monthly, by country, from 2000-03. Holdings in billions of USD.
   # Released with ~45-day lag. Source: US Treasury TIC system.
-  # Covers the top ~30 holders plus an "all other" residual.
+  # Covers the major holders listed each month (19-45 countries, median 35; only 20
+  # for 2026 months, which come from the SLT table alone). The "All Other" residual,
+  # totals and memo rows are dropped by the adapter.
   - name: tic_foreign_holders
     source: tic
     start: "2000-01-01"
@@ -191,12 +198,12 @@ datasets:
     lookback_days: 365      # SLT table revises the trailing 12 months
     note: >
       US Treasury Major Foreign Holders of Treasury Securities.
-      Monthly, ~30 countries, USD billions, 2000–present.
+      Monthly, ~20-45 countries (median 35), USD billions, 2000-03–present.
       Source: treasury.gov mfhhis01.txt (archive) + ticdata.treasury.gov
       slt_table5.txt (rolling 13 months), updated monthly.
 
   # ── BIS central bank policy rates ───────────────────────────────────────────
-  # Daily, 39 countries (ISO2) + XM (Eurozone), from ~1946 (US) / 1990s (EM).
+  # Daily, 48 countries (ISO2) + XM (Eurozone), from 1946 (GB, JP, CH, ...) / 1990s (most EM).
   # BIS WS_CBPOL key: FREQ.REF_AREA — just 2 dimensions.
   # Use period_format: daily so startPeriod is sent as YYYY-MM-DD (not YYYY-Q#).
   - name: bis_cbpol
@@ -207,35 +214,44 @@ datasets:
     period_format: daily
     incremental_key: date
     note: >
-      BIS central bank policy rates, daily, 39 countries + Eurozone (XM).
+      BIS central bank policy rates, daily, 48 countries + Eurozone (XM).
       Source: BIS Statistics API (stats.bis.org) dataflow WS_CBPOL.
       Countries: AR AU BR CA CH CL CN CO CZ DK GB HK HU ID IL IN IS JP KR KW
-        MA MK MX MY NO NZ PE PH PL RO RS RU SA SE TH TR US XM ZA.
-      History: US from 1954, most G10 from 1970s–1980s, EM from 1990s–2000s.
+        MA MK MX MY NO NZ PE PH PL RO RS RU SA SE TH TR US XM ZA, plus pre-euro
+        national rates AT BE DE ES FR IT NL PT (to 1998-12), GR (to 2000-12), HR (to 2022-07).
+      History: GB JP CH DK SE IN and most pre-euro members from 1946, DE 1948,
+        US 1954-07, CA 1960; EM mostly from 1990s–2000s.
       clean/interest_rates.py pivots to wide (date × country ISO2).
 
   # ── BIS international debt securities outstanding ────────────────────────────
-  # Quarterly, ~50 countries. Covers bonds and notes issued internationally,
-  # broken down by issuer country (ISSUER_RES), nationality (ISSUER_NAT), etc.
+  # Quarterly, 1993-Q1 to present, ~155 issuer countries by nationality / ~158 by
+  # residence (plus regional aggregates). Securities issued outside the issuer's
+  # local market, by issuer residence (ISSUER_RES) and nationality (ISSUER_NAT).
   # Dimensions (15): FREQ.ISSUER_RES.ISSUER_NAT.ISSUER_BUS_IMM.ISSUER_BUS_ULT.
   #   MARKET.ISSUE_TYPE.ISSUE_CUR_GROUP.ISSUE_CUR.ISSUE_OR_MAT.ISSUE_RE_MAT.
   #   ISSUE_RATE.ISSUE_RISK.ISSUE_COL.MEASURE
-  # Key below: Q, all issuers, market=C (combined), type=A (all), all cur groups,
-  #   cur=TO1 (total all currencies), or_mat=C (combined), all remaining attrs,
-  #   measure=C (amounts outstanding). ~1,000 rows/quarter.
-  # Use python wrdsdl.py discover bis --dataflow WS_DEBT_SEC2_PUB to explore.
+  # Key below: Q, all residences/nationalities/sectors, market=C (international
+  #   markets), type=A (all), all currency groups, cur=TO1 (total), original and
+  #   remaining maturity A (all), rate/risk/collateral A (all), measure=I
+  #   (amounts outstanding). Blank = wildcard; "A" is a literal code, not "all".
+  #   Until 2026-09-19 the key had ISSUE_OR_MAT=C (short-term) and MEASURE=C
+  #   (gross issues), i.e. quarterly issuance of short-term paper only.
+  # Codes: python wrdsdl.py discover bis --dataset WS_DEBT_SEC2_PUB
   - name: bis_debt_sec
     source: bis
     dataflow: WS_DEBT_SEC2_PUB
-    key: Q.....C.A..TO1.C.A.A.A.A.C
+    key: Q.....C.A..TO1.A.A.A.A.A.I
     start: "1993-01-01"
     incremental_key: date
     lookback_days: 365      # quarterly revisions
     note: >
-      BIS international debt securities, all sectors, total-currency amounts outstanding,
+      BIS international debt securities, amounts outstanding, all maturities,
       quarterly. Source: BIS Statistics API (stats.bis.org) dataflow WS_DEBT_SEC2_PUB.
-      Amounts in USD millions (unit_measure=USD, unit_mult=6).
-      To narrow to government sector: use discover mode to find the ISSUER_BUS_IMM code.
+      Amounts in USD millions (unit_measure=USD, unit_mult=6). Rows come in both
+      views: ISSUER_NAT=3P ("all countries excluding residents") with a country
+      ISSUER_RES gives the by-residence series, and the reverse the by-nationality
+      series; each is split by issuer sector (ISSUER_BUS_*: 1 = all) and currency
+      group (A = all, D = domestic, F = foreign), so totals are single rows.
 
   # ── BIS locational banking statistics (LBS) ──────────────────────────────────
   # Quarterly. Cross-border bank claims and liabilities by reporting country.
@@ -261,11 +277,11 @@ datasets:
       counterpart breakdown (5J→specific country code).
 
   # ── BIS effective exchange rates ─────────────────────────────────────────────
-  # Monthly real (CPI-adjusted) and nominal EER, broad basket (61 economies).
+  # Monthly real (CPI-adjusted) EER, broad basket, and nominal EER, narrow basket.
   # Dimensions: FREQ.EER_TYPE.EER_BASKET.REF_AREA
   #   EER_TYPE: R=real, N=nominal
-  #   EER_BASKET: B=broad (61 economies, from 1994), N=narrow (27 economies, from 1964)
-  #   REF_AREA: A = all reporting economies
+  #   EER_BASKET: B=broad (64 economies in the data, from 1994), N=narrow (26-27 economies, from 1964)
+  #   REF_AREA: blank (trailing dot) = all reporting economies; "A" is not a wildcard
   # Index: 2020=100. Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
   - name: bis_eer_real
     source: bis
@@ -276,7 +292,7 @@ datasets:
     incremental_key: date
     lookback_days: 62       # monthly
     note: >
-      BIS real effective exchange rates (REER), broad basket (61 economies), monthly.
+      BIS real effective exchange rates (REER), broad basket (64 economies), monthly.
       CPI-deflated. Index 2020=100. All countries with available data.
       Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
       Key: FREQ.EER_TYPE.EER_BASKET.REF_AREA — trailing dot = wildcard (all countries).
@@ -326,10 +342,15 @@ datasets:
       # Fiscal  (codes as of Oct 2024 WEO; older editions used GGREV/GGEXP/GGPB)
       - GGR_NGDP     # General govt revenue (% GDP)
       - GGX_NGDP     # General govt total expenditure (% GDP)
-      - GGXCNL       # General govt net lending/borrowing = fiscal balance (% GDP)
-      - GGXONLB      # General govt primary net lending/borrowing (% GDP)
-      - GGXWDG       # General govt gross debt (% GDP)
-      - GGXWDN       # General govt net debt (% GDP)
+      - GGXCNL_NGDP  # General govt net lending/borrowing = fiscal balance (% GDP)
+      - GGXONLB_NGDP # General govt primary net lending/borrowing (% GDP)
+      - GGXWDG_NGDP  # General govt gross debt (% GDP)
+      - GGXWDN_NGDP  # General govt net debt (% GDP)
+      # Same four in levels: national currency, billions (not comparable across countries)
+      - GGXCNL
+      - GGXONLB
+      - GGXWDG
+      - GGXWDN
       # External
       - BCA_NGDPD    # Current account balance (% GDP)
       - LUR          # Unemployment rate (%)
@@ -346,21 +367,21 @@ datasets:
     provider: worldbank
     indicator: NY.GDP.MKTP.CD
     start: "1960"
-    note: "World Bank GDP, current USD, ~180 countries, annual."
+    note: "World Bank GDP, current USD, ~195 economies/year (214 in total), annual."
 
   - name: wb_gdp_growth
     source: external
     provider: worldbank
     indicator: NY.GDP.MKTP.KD.ZG
     start: "1960"
-    note: "World Bank GDP growth rate (%), constant prices, ~180 countries, annual."
+    note: "World Bank GDP growth rate (%), constant prices, ~195 economies/year (214 in total), annual."
 
   - name: wb_gdp_pcap_usd
     source: external
     provider: worldbank
     indicator: NY.GDP.PCAP.CD
     start: "1960"
-    note: "World Bank GDP per capita, current USD, ~180 countries, annual."
+    note: "World Bank GDP per capita, current USD, ~195 economies/year (214 in total), annual."
 
   # ── Consumption ───────────────────────────────────────────────────────────────
   - name: wb_consumption_hh
@@ -425,7 +446,7 @@ datasets:
   - name: wb_portfolio_equity
     source: external
     provider: worldbank
-    indicator: BN.KLT.PTXL.CD
+    indicator: BX.PEF.TOTL.CD.WD   # was BN.KLT.PTXL.CD (net portfolio investment, all instruments) until 2026-09-19
     start: "1960"
     note: "World Bank portfolio equity net inflows, current USD, annual."
 
@@ -529,7 +550,7 @@ datasets:
     wb_source: 57              # WDI Database Archives (past vintages)
     start: 1970
     versions:                  # latest vintage that still carries each country
-      "201906": [BGR, MYS, PAN, RUS, VEN]   # arrears through 2017 (PAN, MYS: arrears only)
+      "201906": [BGR, MYS, PAN, RUS, VEN]   # through 2017 (PAN, MYS: arrears only, through 2016)
       "201412": [BGR, HUN, MYS, PAN, VEN]   # through 2013
       "201012": [BGR, CHL, MYS, PAN, RUS, URY, VEN]  # through 2009
       "200704": [POL, TTO]                  # debt only, through 2005
@@ -667,7 +688,8 @@ datasets:
       denomination (…_DIC_<CCY>_…) are also available; change SECTOR /
       COUNTERPART_SECTOR / INDICATOR to get them. Non-country reporters:
       TX093 = SEFER + SSIO (securities held as reserves and by international
-      organizations), TX091 = international organizations; counterpart GX031 =
+      organizations; TX091 = international organizations is in the codelist but
+      has no rows in this pull); counterpart GX031 =
       World minus 25 significant financial centers.
 
   # ── IMF DIP (formerly CDIS): bilateral FDI positions ────────────────────────
@@ -705,7 +727,7 @@ datasets:
   #   BDGBOND.  Germany  9-10 years (ends 2019-09 — post-euro, Bund issuance slowed)
   #   UKMEDYLD  UK gilt  average redemption yield on 10-yr stock (ends 2019-09)
   #   BGGBOND.  Belgium  6-year-and-over
-  #   LVGBOND.  Latvia   5-year treasury bond
+  #   LVGBOND.  Latvia   5-year treasury bond (not in the list below)
   #   KOGBOND.  Korea    3-year Treasury bond (most liquid KRW benchmark)
   #   MXGBOND.  Mexico   UDIBONO (inflation-linked) 10Y
   - name: ds_bond_yields_10y
@@ -725,15 +747,15 @@ datasets:
       - ESGBOND.   # Spain 10Y central govt bond yield
       - NLGBOND.   # Netherlands 10Y central govt bond
       - BGGBOND.   # Belgium central govt bond 6Y+ yield
-      - PTGBOND.   # Portugal 10Y benchmark bond (EP)
-      - GRGBOND.   # Greece 10Y benchmark bond (EP)
+      - PTGBOND.   # Portugal 10Y benchmark bond (EP) (1993–2019-09)
+      - GRGBOND.   # Greece 10Y benchmark bond (EP) (1998–2019-09)
       - OEGBOND.   # Austria 10Y govt bond
       - FNGBOND.   # Finland 10Y govt bond (monthly avg)
-      - IRGBOND.   # Ireland 10Y benchmark bond (EP)
+      - IRGBOND.   # Ireland 10Y benchmark bond (EP) (1986–2019-09)
       # Nordic / non-euro Europe
       - DKGBOND.   # Denmark 10Y central govt bond (EP)
       - SDGBOND.   # Sweden 10Y govt bond
-      - NWGBOND.   # Norway 10Y govt benchmark bond (EP)
+      - NWGBOND.   # Norway 10Y govt benchmark bond (EP) (1985–2021-06)
       - SWGBOND.   # Switzerland confederation bond 10Y
       - ICGBOND.   # Iceland 10Y treasury bond (EP)
       # Other Europe
@@ -741,7 +763,7 @@ datasets:
       - CZGBOND.   # Czech Republic 10Y long-term bond (EP)
       - POGBOND.   # Poland 10Y govt bond (EP)
       - RMGBOND.   # Romania 10Y govt bond (EP)
-      - RSGBOND.   # Russia 10Y govt bond (EP)
+      - RSGBOND.   # Russia 10Y govt bond (EP) (2003–2024-06)
       # Asia-Pacific
       - JPGBOND.   # Japan 10Y interest-bearing govt bond (EP)
       - AUGBOND.   # Australia 10Y Commonwealth govt bond
@@ -750,7 +772,7 @@ datasets:
       - CHGBOND.   # China 10Y govt bond (EP)
       - INGBOND.   # India 10Y treasury bond
       - TWGBD10Y   # Taiwan 10Y govt bond (EP)
-      - HKGBOND.   # Hong Kong 10Y govt bond
+      - HKGBOND.   # Hong Kong 10Y govt bond (2010–2024-12)
       - MYGBOND.   # Malaysia 10Y govt bond
       - SPGBOND.   # Singapore 10Y govt bond (EP)
       - THGBOND.   # Thailand 10Y govt bond
@@ -766,16 +788,18 @@ datasets:
     note: >
       10-year government bond yields from LSEG Datastream via WRDS tr_ds_econ.
       Monthly, end-of-period unless noted. Units: percent per annum.
-      Not all series run to present: BDGBOND./UKMEDYLD end 2019-09 (Datastream
-      discontinued; use alternative sources for current DE/UK yields if needed).
+      Not all series run to present: BDGBOND./UKMEDYLD/GRGBOND./IRGBOND./PTGBOND.
+      end 2019-09, NWGBOND. 2021-06, RSGBOND. 2024-06, HKGBOND. 2024-12 (Datastream
+      discontinued; use alternative sources for current yields if needed).
       clean/interest_rates.py maps mnemonics to ISO2 country codes and pivots wide.
 
   # ── Monthly CPI (IMF IFS via Datastream economic series) ─────────────────────
   # Source: tr_ds_econ.wrds_ecoinfo + ecodata. Mnemonic pattern: {CC}I64...F
   # = IMF International Financial Statistics line 64, "Consumer Prices, All Items".
-  # 164 country series; 151 active through 2024+. Median history from ~1970.
+  # 164 country series; 159 with data in 2024+. Median history from ~1970.
   # Index level (not % change) — compute YoY in clean script.
-  # Units: index (base year varies by country, typically 2010=100 or 2015=100).
+  # Units: index; base year varies widely by country (e.g. US 2010, UK 2015,
+  #   JP/DE/KR 2020, IN ~2024; only ~21 of 164 series are 2010=100 or 2015=100).
   - name: ds_cpi_monthly
     source: wrds_ds_econ
     start: "1950-01-01"
@@ -789,7 +813,7 @@ datasets:
       - AMI64...F  # ARMENIA (1992-12 to 2026-05)
       - AEI64...F  # ARUBA (1986-01 to 2020-02)
       - OEI64...F  # AUSTRIA (1957-01 to 2026-03)
-      - BHI64...F  # BAHAMAS (1972-07 to 2025-05)
+      - BHI64...F  # BAHAMAS (1972-07 to 2026-04)
       - BAI64...F  # BAHRAIN (1975-07 to 2026-04)
       - BSI64...F  # BANGLADESH (1993-07 to 2026-05)
       - BBI64...F  # BARBADOS (1965-10 to 2026-02)
@@ -868,7 +892,7 @@ datasets:
       - LBI64...F  # LEBANON (2007-12 to 2026-04)
       - LSI64...F  # LESOTHO (1999-07 to 2026-03)
       - LYI64...F  # LIBYA (1964-01 to 2026-03)
-      - LNI64...F  # LITHUANIA (1990-12 to 2025-12)
+      - LNI64...F  # LITHUANIA (1990-12 to 2026-08)
       - LXI64...F  # LUXEMBOURG (1955-01 to 2026-04)
       - MOI64...F  # MACAU (1988-01 to 2026-01)
       - MKI64...F  # MACEDONIA (1993-01 to 2026-03)
@@ -949,9 +973,9 @@ datasets:
     note: >
       Monthly CPI index levels (IMF IFS line 64, "Consumer Prices All Items") via
       LSEG Datastream economic series (WRDS tr_ds_econ). 164 country series;
-      ~151 active through 2024+. Mnemonic pattern: {CC}I64...F. Index level
+      159 with data in 2024+. Mnemonic pattern: {CC}I64...F. Index level
       (not % change) — YoY inflation computed in clean/cpi_monthly.py.
-      Base year varies by country (typically 2010=100 or 2015=100).
+      Base year varies widely by country (US 2010, UK 2015, JP/DE/KR 2020, ...).
       wrds_ds_econ adapter normalises output to date_, dsmnemonic, close_.
 
   # ── Quarterly BOP / capital flows (IMF IFS via Datastream economic series) ──
@@ -1013,8 +1037,8 @@ datasets:
       - FJI109BXF  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI109BXF  # FINLAND (1975-01 to 2025-10)
       - FRI109BXF  # FRANCE (1975-01 to 2025-10)
-      - GEI109BXF  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI109BXF  # GAMBIA (2007-01 to 2025-04)
+      - GEI109BXF  # GUINEA (2009-01 to 2025-07)
+      - GMI109BXF  # GAMBIA (2007-01 to 2026-04)
       - GGI109BXF  # GEORGIA (1997-01 to 2025-10)
       - BDI109BXF  # GERMANY (1971-01 to 2025-10)
       - GRI109BXF  # GREECE (1976-01 to 2025-07)
@@ -1026,7 +1050,7 @@ datasets:
       - ICI109BXF  # ICELAND (1976-01 to 2025-10)
       - INI109BXF  # INDIA (1975-01 to 2025-10)
       - IDI109BXF  # INDONESIA (1981-01 to 2026-01)
-      - IRI109BXF  # IRELAND (2005-01 to 2025-01)
+      - IRI109BXF  # IRELAND (2005-01 to 2025-10)
       - ISI109BXF  # ISRAEL (1972-01 to 2025-10)
       - ITI109BXF  # ITALY (1970-01 to 2025-10)
       - JMI109BXF  # JAMAICA (2012-01 to 2025-10)
@@ -1035,25 +1059,25 @@ datasets:
       - KZI109BXF  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI109BXF  # KOSOVO (2009-01 to 2025-10)
       - KYI109BXF  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI109BXF  # LAOS (1994-01 to 2025-04)
+      - LAI109BXF  # LAOS (1994-01 to 2026-04)
       - LVI109BXF  # LATVIA (1993-01 to 2025-10)
       - LBI109BXF  # LEBANON (2002-01 to 2023-10)
       - LSI109BXF  # LESOTHO (1982-01 to 2025-10)
       - LNI109BXF  # LITHUANIA (1993-01 to 2025-10)
       - LXI109BXF  # LUXEMBOURG (1999-01 to 2025-10)
       - MKI109BXF  # MACEDONIA (1996-01 to 2026-01)
-      - MDI109BXF  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI109BXF  # MALAYSIA (1999-01 to 2024-10)
+      - MDI109BXF  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI109BXF  # MALAYSIA (1999-01 to 2026-04)
       - MAI109BXF  # MALTA (1995-01 to 2025-07)
       - MUI109BXF  # MAURITIUS (2000-01 to 2025-01)
       - MXI109BXF  # MEXICO (1979-01 to 2026-01)
       - MFI109BXF  # MOLDOVA (1994-01 to 2025-10)
-      - MGI109BXF  # MONGOLIA (1998-01 to 2025-01)
+      - MGI109BXF  # MONGOLIA (1998-01 to 2026-04)
       - MCI109BXF  # MOROCCO (2003-01 to 2025-10)
-      - MZI109BXF  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI109BXF  # MOZAMBIQUE (2005-01 to 2026-01)
       - BUI109BXF  # MYANMAR (1976-01 to 2020-07)
       - WAI109BXF  # NAMIBIA (1999-01 to 2025-07)
-      - NPI109BXF  # NEPAL (1977-01 to 2025-04)
+      - NPI109BXF  # NEPAL (1977-01 to 2026-04)
       - NLI109BXF  # NETHERLANDS (1967-01 to 2025-07)
       - NZI109BXF  # NEW ZEALAND (2000-01 to 2025-10)
       - NII109BXF  # NICARAGUA (1992-01 to 2025-01)
@@ -1069,7 +1093,7 @@ datasets:
       - RMI109BXF  # ROMANIA (1991-01 to 2025-10)
       - RSI109BXF  # RUSSIA (1994-01 to 2025-10)
       - WSI109BXF  # SAMOA (2003-07 to 2025-10)
-      - STI109BXF  # SAO TOME (2011-01 to 2025-04)
+      - STI109BXF  # SAO TOME (2011-01 to 2026-01)
       - SII109BXF  # SAUDI ARABIA (2006-01 to 2025-10)
       - SBI109BXF  # SERBIA (2007-01 to 2025-10)
       - SEI109BXF  # SEYCHELLES (1979-01 to 2025-07)
@@ -1081,13 +1105,13 @@ datasets:
       - KOI109BXF  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI109BXF  # SPAIN (1975-01 to 2025-10)
       - LKI109BXF  # SRI LANKA (1977-01 to 2025-01)
-      - SNI109BXF  # SUDAN (1977-01 to 2022-10)
+      - SNI109BXF  # SUDAN (1977-01 to 2025-10)
       - SUI109BXF  # SURINAM (2005-01 to 2025-10)
       - SDI109BXF  # SWEDEN (1975-01 to 2025-10)
       - SWI109BXF  # SWITZERLAND (1999-01 to 2025-10)
       - TJI109BXF  # TAJIKISTAN (2002-01 to 2025-10)
       - THI109BXF  # THAILAND (1976-01 to 2025-10)
-      - TGI109BXF  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI109BXF  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI109BXF  # TURKEY (1984-01 to 2026-01)
       - UGI109BXF  # UGANDA (1980-01 to 2025-07)
       - URI109BXF  # UKRAINE (1994-01 to 2025-07)
@@ -1135,8 +1159,8 @@ datasets:
       - FJI1A9BXF  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI1A9BXF  # FINLAND (1975-01 to 2025-10)
       - FRI1A9BXF  # FRANCE (1975-01 to 2025-10)
-      - GEI1A9BXF  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI1A9BXF  # GAMBIA (2007-01 to 2025-04)
+      - GEI1A9BXF  # GUINEA (2009-01 to 2025-07)
+      - GMI1A9BXF  # GAMBIA (2007-01 to 2026-04)
       - GGI1A9BXF  # GEORGIA (1997-01 to 2025-10)
       - BDI1A9BXF  # GERMANY (1971-01 to 2025-10)
       - GRI1A9BXF  # GREECE (1976-01 to 2025-07)
@@ -1148,7 +1172,7 @@ datasets:
       - ICI1A9BXF  # ICELAND (1976-01 to 2025-10)
       - INI1A9BXF  # INDIA (1975-01 to 2025-10)
       - IDI1A9BXF  # INDONESIA (1981-01 to 2026-01)
-      - IRI1A9BXF  # IRELAND (2005-01 to 2025-01)
+      - IRI1A9BXF  # IRELAND (2005-01 to 2025-10)
       - ISI1A9BXF  # ISRAEL (1972-01 to 2025-10)
       - ITI1A9BXF  # ITALY (1970-01 to 2025-10)
       - JMI1A9BXF  # JAMAICA (2012-01 to 2025-10)
@@ -1157,25 +1181,25 @@ datasets:
       - KZI1A9BXF  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI1A9BXF  # KOSOVO (2009-01 to 2025-10)
       - KYI1A9BXF  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI1A9BXF  # LAOS (1994-01 to 2025-04)
+      - LAI1A9BXF  # LAOS (1994-01 to 2026-04)
       - LVI1A9BXF  # LATVIA (1993-01 to 2025-10)
       - LBI1A9BXF  # LEBANON (2002-01 to 2023-10)
       - LSI1A9BXF  # LESOTHO (1982-01 to 2025-10)
       - LNI1A9BXF  # LITHUANIA (1993-01 to 2025-10)
       - LXI1A9BXF  # LUXEMBOURG (1999-01 to 2025-10)
       - MKI1A9BXF  # MACEDONIA (1996-01 to 2026-01)
-      - MDI1A9BXF  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI1A9BXF  # MALAYSIA (1999-01 to 2024-10)
+      - MDI1A9BXF  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI1A9BXF  # MALAYSIA (1999-01 to 2026-04)
       - MAI1A9BXF  # MALTA (1995-01 to 2025-07)
       - MUI1A9BXF  # MAURITIUS (2000-01 to 2025-01)
       - MXI1A9BXF  # MEXICO (1979-01 to 2026-01)
       - MFI1A9BXF  # MOLDOVA (1994-01 to 2025-10)
-      - MGI1A9BXF  # MONGOLIA (1998-01 to 2025-01)
+      - MGI1A9BXF  # MONGOLIA (1998-01 to 2026-04)
       - MCI1A9BXF  # MOROCCO (2003-01 to 2025-10)
-      - MZI1A9BXF  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI1A9BXF  # MOZAMBIQUE (2005-01 to 2026-01)
       - BUI1A9BXF  # MYANMAR (1976-01 to 2020-07)
       - WAI1A9BXF  # NAMIBIA (1999-01 to 2025-07)
-      - NPI1A9BXF  # NEPAL (1977-01 to 2025-04)
+      - NPI1A9BXF  # NEPAL (1977-01 to 2026-04)
       - NLI1A9BXF  # NETHERLANDS (1967-01 to 2025-07)
       - NZI1A9BXF  # NEW ZEALAND (2000-01 to 2025-10)
       - NII1A9BXF  # NICARAGUA (1992-01 to 2025-01)
@@ -1186,12 +1210,12 @@ datasets:
       - PEI1A9BXF  # PERU (1977-01 to 2025-10)
       - PHI1A9BXF  # PHILIPPINES (1977-01 to 2025-10)
       - POI1A9BXF  # POLAND (2000-01 to 2025-10)
-      - PTI1A9BXF  # PORTUGAL (1975-01 to 2025-07)
+      - PTI1A9BXF  # PORTUGAL (1975-01 to 2026-04)
       - QAI1A9BXF  # QATAR (2011-01 to 2025-10)
       - RMI1A9BXF  # ROMANIA (1991-01 to 2025-10)
       - RSI1A9BXF  # RUSSIA (1994-01 to 2025-10)
       - WSI1A9BXF  # SAMOA (2003-07 to 2025-10)
-      - STI1A9BXF  # SAO TOME (2011-01 to 2025-04)
+      - STI1A9BXF  # SAO TOME (2011-01 to 2026-01)
       - SII1A9BXF  # SAUDI ARABIA (2006-01 to 2025-10)
       - SBI1A9BXF  # SERBIA (2007-01 to 2025-10)
       - SEI1A9BXF  # SEYCHELLES (1979-01 to 2025-07)
@@ -1203,13 +1227,13 @@ datasets:
       - KOI1A9BXF  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI1A9BXF  # SPAIN (1975-01 to 2025-10)
       - LKI1A9BXF  # SRI LANKA (1977-01 to 2025-01)
-      - SNI1A9BXF  # SUDAN (1977-01 to 2022-10)
+      - SNI1A9BXF  # SUDAN (1977-01 to 2025-10)
       - SUI1A9BXF  # SURINAM (2005-01 to 2025-10)
       - SDI1A9BXF  # SWEDEN (1975-01 to 2025-10)
       - SWI1A9BXF  # SWITZERLAND (1999-01 to 2025-10)
       - TJI1A9BXF  # TAJIKISTAN (2002-01 to 2025-10)
       - THI1A9BXF  # THAILAND (1976-01 to 2025-10)
-      - TGI1A9BXF  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI1A9BXF  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI1A9BXF  # TURKEY (1984-01 to 2026-01)
       - UGI1A9BXF  # UGANDA (1980-01 to 2025-07)
       - URI1A9BXF  # UKRAINE (1994-01 to 2025-07)
@@ -1255,8 +1279,8 @@ datasets:
       - FJI209BAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI209BAA  # FINLAND (1975-01 to 2025-10)
       - FRI209BAA  # FRANCE (1975-01 to 2025-10)
-      - GEI209BAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI209BAA  # GAMBIA (2007-01 to 2025-04)
+      - GEI209BAA  # GUINEA (2009-01 to 2025-07)
+      - GMI209BAA  # GAMBIA (2007-01 to 2026-04)
       - GGI209BAA  # GEORGIA (1997-01 to 2025-10)
       - BDI209BAA  # GERMANY (1971-01 to 2025-10)
       - GRI209BAA  # GREECE (1999-01 to 2025-07)
@@ -1267,7 +1291,7 @@ datasets:
       - ICI209BAA  # ICELAND (1976-01 to 2025-10)
       - INI209BAA  # INDIA (1975-01 to 2025-10)
       - IDI209BAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI209BAA  # IRELAND (2005-01 to 2025-01)
+      - IRI209BAA  # IRELAND (2005-01 to 2025-10)
       - ISI209BAA  # ISRAEL (1972-01 to 2025-10)
       - ITI209BAA  # ITALY (1970-01 to 2025-10)
       - JPI209BAA  # JAPAN (1996-01 to 2025-10)
@@ -1275,24 +1299,24 @@ datasets:
       - KZI209BAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI209BAA  # KOSOVO (2009-01 to 2025-10)
       - KYI209BAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI209BAA  # LAOS (1994-01 to 2025-04)
+      - LAI209BAA  # LAOS (1994-01 to 2026-04)
       - LVI209BAA  # LATVIA (1997-01 to 2025-10)
       - LBI209BAA  # LEBANON (2002-01 to 2023-10)
       - LSI209BAA  # LESOTHO (1982-01 to 2025-10)
       - LNI209BAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI209BAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI209BAA  # MACEDONIA (1998-01 to 2026-01)
-      - MDI209BAA  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI209BAA  # MALAYSIA (2002-01 to 2024-10)
+      - MDI209BAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI209BAA  # MALAYSIA (2002-01 to 2026-04)
       - MAI209BAA  # MALTA (1995-01 to 2025-07)
       - MUI209BAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI209BAA  # MEXICO (1979-01 to 2026-01)
       - MFI209BAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI209BAA  # MONGOLIA (2007-01 to 2025-01)
+      - MGI209BAA  # MONGOLIA (2007-01 to 2026-04)
       - MCI209BAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI209BAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI209BAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - WAI209BAA  # NAMIBIA (1999-01 to 2025-07)
-      - NPI209BAA  # NEPAL (1977-01 to 2025-04)
+      - NPI209BAA  # NEPAL (1977-01 to 2026-04)
       - NLI209BAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI209BAA  # NEW ZEALAND (2000-01 to 2025-10)
       - NII209BAA  # NICARAGUA (1992-01 to 2025-01)
@@ -1317,13 +1341,13 @@ datasets:
       - KOI209BAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI209BAA  # SPAIN (1975-01 to 2025-10)
       - LKI209BAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI209BAA  # SUDAN (1977-01 to 2022-10)
+      - SNI209BAA  # SUDAN (1977-01 to 2025-10)
       - SUI209BAA  # SURINAM (2005-01 to 2025-10)
       - SDI209BAA  # SWEDEN (1975-01 to 2025-10)
       - SWI209BAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI209BAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI209BAA  # THAILAND (1976-01 to 2025-10)
-      - TGI209BAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI209BAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI209BAA  # TURKEY (1984-01 to 2026-01)
       - UGI209BAA  # UGANDA (1980-01 to 2025-07)
       - URI209BAA  # UKRAINE (1994-01 to 2025-07)
@@ -1369,8 +1393,8 @@ datasets:
       - FJI309NAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI309NAA  # FINLAND (1975-01 to 2025-10)
       - FRI309NAA  # FRANCE (1975-01 to 2025-10)
-      - GEI309NAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI309NAA  # GAMBIA (2007-01 to 2025-04)
+      - GEI309NAA  # GUINEA (2009-01 to 2025-07)
+      - GMI309NAA  # GAMBIA (2007-01 to 2026-04)
       - GGI309NAA  # GEORGIA (1997-01 to 2025-10)
       - BDI309NAA  # GERMANY (1971-01 to 2025-10)
       - GRI309NAA  # GREECE (1976-01 to 2025-07)
@@ -1381,7 +1405,7 @@ datasets:
       - ICI309NAA  # ICELAND (1976-01 to 2025-10)
       - INI309NAA  # INDIA (1975-01 to 2025-10)
       - IDI309NAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI309NAA  # IRELAND (2005-01 to 2025-01)
+      - IRI309NAA  # IRELAND (2005-01 to 2025-10)
       - ISI309NAA  # ISRAEL (1972-01 to 2025-10)
       - ITI309NAA  # ITALY (1970-01 to 2025-10)
       - JPI309NAA  # JAPAN (1996-01 to 2025-10)
@@ -1389,25 +1413,25 @@ datasets:
       - KZI309NAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI309NAA  # KOSOVO (2009-01 to 2025-10)
       - KYI309NAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI309NAA  # LAOS (1994-01 to 2025-04)
+      - LAI309NAA  # LAOS (1994-01 to 2026-04)
       - LVI309NAA  # LATVIA (1993-01 to 2025-10)
       - LBI309NAA  # LEBANON (2002-01 to 2023-10)
       - LSI309NAA  # LESOTHO (1982-01 to 2025-10)
       - LNI309NAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI309NAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI309NAA  # MACEDONIA (1996-01 to 2026-01)
-      - MDI309NAA  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI309NAA  # MALAYSIA (1999-01 to 2024-10)
+      - MDI309NAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI309NAA  # MALAYSIA (1999-01 to 2026-04)
       - MAI309NAA  # MALTA (1995-01 to 2025-07)
       - MUI309NAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI309NAA  # MEXICO (1979-01 to 2026-01)
       - MFI309NAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI309NAA  # MONGOLIA (1998-01 to 2025-01)
+      - MGI309NAA  # MONGOLIA (1998-01 to 2026-04)
       - MCI309NAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI309NAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI309NAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - BUI309NAA  # MYANMAR (1976-01 to 2020-07)
       - WAI309NAA  # NAMIBIA (1999-01 to 2025-07)
-      - NPI309NAA  # NEPAL (1977-01 to 2025-04)
+      - NPI309NAA  # NEPAL (1977-01 to 2026-04)
       - NLI309NAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI309NAA  # NEW ZEALAND (2000-01 to 2025-10)
       - NII309NAA  # NICARAGUA (1992-01 to 2025-01)
@@ -1434,13 +1458,13 @@ datasets:
       - KOI309NAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI309NAA  # SPAIN (1975-01 to 2025-10)
       - LKI309NAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI309NAA  # SUDAN (1977-01 to 2022-10)
+      - SNI309NAA  # SUDAN (1977-01 to 2025-10)
       - SUI309NAA  # SURINAM (2005-01 to 2025-10)
       - SDI309NAA  # SWEDEN (1975-01 to 2025-10)
       - SWI309NAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI309NAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI309NAA  # THAILAND (1976-01 to 2025-10)
-      - TGI309NAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI309NAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI309NAA  # TURKEY (1984-01 to 2026-01)
       - UGI309NAA  # UGANDA (1980-01 to 2025-07)
       - URI309NAA  # UKRAINE (1994-01 to 2025-07)
@@ -1486,8 +1510,8 @@ datasets:
       - FJI3A9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI3A9AAA  # FINLAND (1975-01 to 2025-10)
       - FRI3A9AAA  # FRANCE (1975-01 to 2025-10)
-      - GEI3A9AAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI3A9AAA  # GAMBIA (2010-04 to 2025-04)
+      - GEI3A9AAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3A9AAA  # GAMBIA (2010-04 to 2026-04)
       - GGI3A9AAA  # GEORGIA (1997-01 to 2025-10)
       - BDI3A9AAA  # GERMANY (1971-01 to 2025-10)
       - GRI3A9AAA  # GREECE (1999-01 to 2025-07)
@@ -1498,7 +1522,7 @@ datasets:
       - ICI3A9AAA  # ICELAND (1976-01 to 2025-10)
       - INI3A9AAA  # INDIA (1975-01 to 2025-10)
       - IDI3A9AAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI3A9AAA  # IRELAND (2005-01 to 2025-01)
+      - IRI3A9AAA  # IRELAND (2005-01 to 2025-10)
       - ISI3A9AAA  # ISRAEL (1972-01 to 2025-10)
       - ITI3A9AAA  # ITALY (1970-01 to 2025-10)
       - JPI3A9AAA  # JAPAN (1996-01 to 2025-10)
@@ -1506,22 +1530,22 @@ datasets:
       - KZI3A9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI3A9AAA  # KOSOVO (2009-01 to 2025-10)
       - KYI3A9AAA  # KYRGYZ REPUBLIC (1998-01 to 2024-10)
-      - LAI3A9AAA  # LAOS (1997-01 to 2025-04)
+      - LAI3A9AAA  # LAOS (1997-01 to 2026-04)
       - LVI3A9AAA  # LATVIA (1993-01 to 2025-10)
       - LBI3A9AAA  # LEBANON (2002-01 to 2023-10)
       - LNI3A9AAA  # LITHUANIA (1995-01 to 2025-10)
       - LXI3A9AAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI3A9AAA  # MACEDONIA (1998-01 to 2026-01)
-      - MYI3A9AAA  # MALAYSIA (1999-01 to 2024-10)
+      - MYI3A9AAA  # MALAYSIA (1999-01 to 2026-04)
       - MAI3A9AAA  # MALTA (1995-01 to 2025-07)
       - MUI3A9AAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI3A9AAA  # MEXICO (1979-01 to 2026-01)
       - MFI3A9AAA  # MOLDOVA (1995-01 to 2025-10)
-      - MGI3A9AAA  # MONGOLIA (2005-01 to 2025-01)
+      - MGI3A9AAA  # MONGOLIA (2005-01 to 2026-04)
       - MCI3A9AAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI3A9AAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI3A9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - WAI3A9AAA  # NAMIBIA (1999-01 to 2025-07)
-      - NPI3A9AAA  # NEPAL (1977-01 to 2025-04)
+      - NPI3A9AAA  # NEPAL (1977-01 to 2026-04)
       - NLI3A9AAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI3A9AAA  # NEW ZEALAND (2000-01 to 2025-10)
       - NWI3A9AAA  # NORWAY (1975-01 to 2025-10)
@@ -1531,7 +1555,7 @@ datasets:
       - PEI3A9AAA  # PERU (1977-01 to 2025-10)
       - PHI3A9AAA  # PHILIPPINES (1977-01 to 2025-10)
       - POI3A9AAA  # POLAND (2000-01 to 2025-10)
-      - PTI3A9AAA  # PORTUGAL (1975-01 to 2025-07)
+      - PTI3A9AAA  # PORTUGAL (1975-01 to 2026-04)
       - QAI3A9AAA  # QATAR (2011-01 to 2025-10)
       - RMI3A9AAA  # ROMANIA (1991-01 to 2025-10)
       - RSI3A9AAA  # RUSSIA (1994-01 to 2025-10)
@@ -1547,13 +1571,13 @@ datasets:
       - KOI3A9AAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI3A9AAA  # SPAIN (1975-01 to 2025-10)
       - LKI3A9AAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI3A9AAA  # SUDAN (1977-01 to 2022-10)
+      - SNI3A9AAA  # SUDAN (1977-01 to 2025-10)
       - SUI3A9AAA  # SURINAM (2006-01 to 2025-10)
       - SDI3A9AAA  # SWEDEN (1975-01 to 2025-10)
       - SWI3A9AAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI3A9AAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI3A9AAA  # THAILAND (1976-01 to 2025-10)
-      - TGI3A9AAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI3A9AAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI3A9AAA  # TURKEY (1987-01 to 2026-01)
       - UGI3A9AAA  # UGANDA (1980-01 to 2025-07)
       - URI3A9AAA  # UKRAINE (1994-01 to 2025-07)
@@ -1600,8 +1624,8 @@ datasets:
       - FJI3A9LAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI3A9LAA  # FINLAND (1975-01 to 2025-10)
       - FRI3A9LAA  # FRANCE (1975-01 to 2025-10)
-      - GEI3A9LAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI3A9LAA  # GAMBIA (2007-01 to 2025-04)
+      - GEI3A9LAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3A9LAA  # GAMBIA (2007-01 to 2026-04)
       - GGI3A9LAA  # GEORGIA (1997-01 to 2025-10)
       - BDI3A9LAA  # GERMANY (1971-01 to 2025-10)
       - GRI3A9LAA  # GREECE (1976-01 to 2025-07)
@@ -1612,7 +1636,7 @@ datasets:
       - ICI3A9LAA  # ICELAND (1976-01 to 2025-10)
       - INI3A9LAA  # INDIA (1975-01 to 2025-10)
       - IDI3A9LAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI3A9LAA  # IRELAND (2005-01 to 2025-01)
+      - IRI3A9LAA  # IRELAND (2005-01 to 2025-10)
       - ISI3A9LAA  # ISRAEL (1972-01 to 2025-10)
       - ITI3A9LAA  # ITALY (1970-01 to 2025-10)
       - JPI3A9LAA  # JAPAN (1996-01 to 2025-10)
@@ -1620,25 +1644,25 @@ datasets:
       - KZI3A9LAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI3A9LAA  # KOSOVO (2009-01 to 2025-10)
       - KYI3A9LAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI3A9LAA  # LAOS (1994-01 to 2025-04)
+      - LAI3A9LAA  # LAOS (1994-01 to 2026-04)
       - LVI3A9LAA  # LATVIA (1993-01 to 2025-10)
       - LBI3A9LAA  # LEBANON (2002-01 to 2023-10)
       - LSI3A9LAA  # LESOTHO (1982-01 to 2025-10)
       - LNI3A9LAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI3A9LAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI3A9LAA  # MACEDONIA (1996-01 to 2026-01)
-      - MDI3A9LAA  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI3A9LAA  # MALAYSIA (1999-01 to 2024-10)
+      - MDI3A9LAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3A9LAA  # MALAYSIA (1999-01 to 2026-04)
       - MAI3A9LAA  # MALTA (1995-01 to 2025-07)
       - MUI3A9LAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI3A9LAA  # MEXICO (1979-01 to 2026-01)
       - MFI3A9LAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI3A9LAA  # MONGOLIA (1998-01 to 2025-01)
+      - MGI3A9LAA  # MONGOLIA (1998-01 to 2026-04)
       - MCI3A9LAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI3A9LAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI3A9LAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - BUI3A9LAA  # MYANMAR (1976-01 to 2020-07)
       - WAI3A9LAA  # NAMIBIA (1999-01 to 2025-07)
-      - NPI3A9LAA  # NEPAL (1977-01 to 2025-04)
+      - NPI3A9LAA  # NEPAL (1977-01 to 2026-04)
       - NLI3A9LAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI3A9LAA  # NEW ZEALAND (2000-01 to 2025-10)
       - NII3A9LAA  # NICARAGUA (1992-01 to 2025-01)
@@ -1665,13 +1689,13 @@ datasets:
       - KOI3A9LAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI3A9LAA  # SPAIN (1975-01 to 2025-10)
       - LKI3A9LAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI3A9LAA  # SUDAN (1977-01 to 2022-10)
+      - SNI3A9LAA  # SUDAN (1977-01 to 2025-10)
       - SUI3A9LAA  # SURINAM (2005-01 to 2025-10)
       - SDI3A9LAA  # SWEDEN (1975-01 to 2025-10)
       - SWI3A9LAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI3A9LAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI3A9LAA  # THAILAND (1976-01 to 2025-10)
-      - TGI3A9LAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI3A9LAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI3A9LAA  # TURKEY (1984-01 to 2026-01)
       - UGI3A9LAA  # UGANDA (1980-01 to 2025-07)
       - URI3A9LAA  # UKRAINE (1994-01 to 2025-07)
@@ -1718,7 +1742,7 @@ datasets:
       - FJI3B9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI3B9AAA  # FINLAND (1975-01 to 2025-10)
       - FRI3B9AAA  # FRANCE (1975-01 to 2025-10)
-      - GEI3B9AAA  # FRENCH GUIANA (2009-01 to 2025-07)
+      - GEI3B9AAA  # GUINEA (2009-01 to 2025-07)
       - GGI3B9AAA  # GEORGIA (2000-01 to 2025-10)
       - BDI3B9AAA  # GERMANY (1971-01 to 2025-10)
       - GRI3B9AAA  # GREECE (1999-01 to 2025-07)
@@ -1729,7 +1753,7 @@ datasets:
       - ICI3B9AAA  # ICELAND (1976-01 to 2025-10)
       - INI3B9AAA  # INDIA (1975-01 to 2025-10)
       - IDI3B9AAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI3B9AAA  # IRELAND (2005-01 to 2025-01)
+      - IRI3B9AAA  # IRELAND (2005-01 to 2025-10)
       - ISI3B9AAA  # ISRAEL (1972-01 to 2025-10)
       - ITI3B9AAA  # ITALY (1970-01 to 2025-10)
       - JPI3B9AAA  # JAPAN (1996-01 to 2025-10)
@@ -1737,21 +1761,21 @@ datasets:
       - KZI3B9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI3B9AAA  # KOSOVO (2009-01 to 2025-10)
       - KYI3B9AAA  # KYRGYZ REPUBLIC (1995-01 to 2024-10)
-      - LAI3B9AAA  # LAOS (1997-01 to 2025-04)
+      - LAI3B9AAA  # LAOS (1997-01 to 2026-04)
       - LVI3B9AAA  # LATVIA (1993-01 to 2025-10)
       - LBI3B9AAA  # LEBANON (2002-01 to 2023-10)
       - LSI3B9AAA  # LESOTHO (1982-01 to 2025-10)
       - LNI3B9AAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI3B9AAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI3B9AAA  # MACEDONIA (1996-01 to 2026-01)
-      - MYI3B9AAA  # MALAYSIA (1999-01 to 2024-10)
+      - MYI3B9AAA  # MALAYSIA (1999-01 to 2026-04)
       - MAI3B9AAA  # MALTA (1995-01 to 2025-07)
       - MUI3B9AAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI3B9AAA  # MEXICO (1979-01 to 2026-01)
       - MFI3B9AAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI3B9AAA  # MONGOLIA (2004-01 to 2025-01)
+      - MGI3B9AAA  # MONGOLIA (2004-01 to 2026-04)
       - MCI3B9AAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI3B9AAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI3B9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - WAI3B9AAA  # NAMIBIA (1999-01 to 2025-07)
       - NLI3B9AAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI3B9AAA  # NEW ZEALAND (2000-01 to 2025-10)
@@ -1763,7 +1787,7 @@ datasets:
       - PEI3B9AAA  # PERU (1977-01 to 2025-10)
       - PHI3B9AAA  # PHILIPPINES (1977-01 to 2025-10)
       - POI3B9AAA  # POLAND (2000-01 to 2025-10)
-      - PTI3B9AAA  # PORTUGAL (1975-01 to 2025-07)
+      - PTI3B9AAA  # PORTUGAL (1975-01 to 2026-04)
       - QAI3B9AAA  # QATAR (2011-01 to 2025-10)
       - RMI3B9AAA  # ROMANIA (1991-01 to 2025-10)
       - RSI3B9AAA  # RUSSIA (1994-01 to 2025-10)
@@ -1779,7 +1803,7 @@ datasets:
       - KOI3B9AAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI3B9AAA  # SPAIN (1975-01 to 2025-10)
       - LKI3B9AAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI3B9AAA  # SUDAN (1977-01 to 2022-10)
+      - SNI3B9AAA  # SUDAN (1977-01 to 2025-10)
       - SUI3B9AAA  # SURINAM (2006-01 to 2025-10)
       - SDI3B9AAA  # SWEDEN (1975-01 to 2025-10)
       - SWI3B9AAA  # SWITZERLAND (1999-01 to 2025-10)
@@ -1828,8 +1852,8 @@ datasets:
       - FJI3B9LAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI3B9LAA  # FINLAND (1975-01 to 2025-10)
       - FRI3B9LAA  # FRANCE (1975-01 to 2025-10)
-      - GEI3B9LAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI3B9LAA  # GAMBIA (2025-04 to 2025-04)
+      - GEI3B9LAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3B9LAA  # GAMBIA (2025-04 to 2026-04)
       - GGI3B9LAA  # GEORGIA (1997-01 to 2025-10)
       - BDI3B9LAA  # GERMANY (1971-01 to 2025-10)
       - GRI3B9LAA  # GREECE (1976-01 to 2025-07)
@@ -1840,7 +1864,7 @@ datasets:
       - ICI3B9LAA  # ICELAND (1976-01 to 2025-10)
       - INI3B9LAA  # INDIA (1975-01 to 2025-10)
       - IDI3B9LAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI3B9LAA  # IRELAND (2005-01 to 2025-01)
+      - IRI3B9LAA  # IRELAND (2005-01 to 2025-10)
       - ISI3B9LAA  # ISRAEL (1972-01 to 2025-10)
       - ITI3B9LAA  # ITALY (1970-01 to 2025-10)
       - JPI3B9LAA  # JAPAN (1996-01 to 2025-10)
@@ -1848,21 +1872,21 @@ datasets:
       - KZI3B9LAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI3B9LAA  # KOSOVO (2009-01 to 2025-10)
       - KYI3B9LAA  # KYRGYZ REPUBLIC (1995-01 to 2024-10)
-      - LAI3B9LAA  # LAOS (1994-01 to 2025-04)
+      - LAI3B9LAA  # LAOS (1994-01 to 2026-04)
       - LVI3B9LAA  # LATVIA (1995-01 to 2025-10)
       - LBI3B9LAA  # LEBANON (2002-01 to 2023-10)
       - LSI3B9LAA  # LESOTHO (1982-01 to 2025-10)
       - LNI3B9LAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI3B9LAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI3B9LAA  # MACEDONIA (1996-01 to 2026-01)
-      - MYI3B9LAA  # MALAYSIA (1999-01 to 2024-10)
+      - MYI3B9LAA  # MALAYSIA (1999-01 to 2026-04)
       - MAI3B9LAA  # MALTA (1995-01 to 2025-07)
       - MUI3B9LAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI3B9LAA  # MEXICO (1979-01 to 2026-01)
       - MFI3B9LAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI3B9LAA  # MONGOLIA (2000-01 to 2025-01)
+      - MGI3B9LAA  # MONGOLIA (2000-01 to 2026-04)
       - MCI3B9LAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI3B9LAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI3B9LAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - WAI3B9LAA  # NAMIBIA (1999-01 to 2025-07)
       - NLI3B9LAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI3B9LAA  # NEW ZEALAND (2000-01 to 2025-10)
@@ -1889,13 +1913,13 @@ datasets:
       - KOI3B9LAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI3B9LAA  # SPAIN (1975-01 to 2025-10)
       - LKI3B9LAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI3B9LAA  # SUDAN (1977-01 to 2022-10)
+      - SNI3B9LAA  # SUDAN (1977-01 to 2025-10)
       - SUI3B9LAA  # SURINAM (2005-01 to 2025-10)
       - SDI3B9LAA  # SWEDEN (1975-01 to 2025-10)
       - SWI3B9LAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI3B9LAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI3B9LAA  # THAILAND (1976-01 to 2025-10)
-      - TGI3B9LAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI3B9LAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI3B9LAA  # TURKEY (1986-01 to 2026-01)
       - UGI3B9LAA  # UGANDA (1980-01 to 2025-07)
       - URI3B9LAA  # UKRAINE (1994-01 to 2025-07)
@@ -1942,8 +1966,8 @@ datasets:
       - FJI3D9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI3D9AAA  # FINLAND (1975-01 to 2025-10)
       - FRI3D9AAA  # FRANCE (1975-01 to 2025-10)
-      - GEI3D9AAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI3D9AAA  # GAMBIA (2007-01 to 2025-04)
+      - GEI3D9AAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3D9AAA  # GAMBIA (2007-01 to 2026-04)
       - GGI3D9AAA  # GEORGIA (1997-01 to 2025-10)
       - BDI3D9AAA  # GERMANY (1971-01 to 2025-10)
       - GRI3D9AAA  # GREECE (1976-01 to 2025-07)
@@ -1954,7 +1978,7 @@ datasets:
       - ICI3D9AAA  # ICELAND (1976-01 to 2025-10)
       - INI3D9AAA  # INDIA (1975-01 to 2025-10)
       - IDI3D9AAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI3D9AAA  # IRELAND (2005-01 to 2025-01)
+      - IRI3D9AAA  # IRELAND (2005-01 to 2025-10)
       - ISI3D9AAA  # ISRAEL (1972-01 to 2025-10)
       - ITI3D9AAA  # ITALY (1970-01 to 2025-10)
       - JPI3D9AAA  # JAPAN (1996-01 to 2025-10)
@@ -1962,24 +1986,24 @@ datasets:
       - KZI3D9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI3D9AAA  # KOSOVO (2009-01 to 2025-10)
       - KYI3D9AAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI3D9AAA  # LAOS (1994-01 to 2025-04)
+      - LAI3D9AAA  # LAOS (1994-01 to 2026-04)
       - LVI3D9AAA  # LATVIA (1993-01 to 2025-10)
       - LBI3D9AAA  # LEBANON (2002-01 to 2023-10)
       - LSI3D9AAA  # LESOTHO (1982-01 to 2025-10)
       - LNI3D9AAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI3D9AAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI3D9AAA  # MACEDONIA (1996-01 to 2026-01)
-      - MDI3D9AAA  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI3D9AAA  # MALAYSIA (1999-01 to 2024-10)
+      - MDI3D9AAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3D9AAA  # MALAYSIA (1999-01 to 2026-04)
       - MAI3D9AAA  # MALTA (1995-01 to 2025-07)
       - MUI3D9AAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI3D9AAA  # MEXICO (1979-01 to 2026-01)
       - MFI3D9AAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI3D9AAA  # MONGOLIA (1998-01 to 2025-01)
+      - MGI3D9AAA  # MONGOLIA (1998-01 to 2026-04)
       - MCI3D9AAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI3D9AAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI3D9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - WAI3D9AAA  # NAMIBIA (1999-01 to 2025-07)
-      - NPI3D9AAA  # NEPAL (1977-01 to 2025-04)
+      - NPI3D9AAA  # NEPAL (1977-01 to 2026-04)
       - NLI3D9AAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI3D9AAA  # NEW ZEALAND (2000-01 to 2025-10)
       - NII3D9AAA  # NICARAGUA (1992-01 to 2025-01)
@@ -1990,7 +2014,7 @@ datasets:
       - PEI3D9AAA  # PERU (1977-01 to 2025-10)
       - PHI3D9AAA  # PHILIPPINES (1977-01 to 2025-10)
       - POI3D9AAA  # POLAND (2000-01 to 2025-10)
-      - PTI3D9AAA  # PORTUGAL (1975-01 to 2025-07)
+      - PTI3D9AAA  # PORTUGAL (1975-01 to 2026-04)
       - QAI3D9AAA  # QATAR (2011-01 to 2025-10)
       - RMI3D9AAA  # ROMANIA (1991-01 to 2025-10)
       - RSI3D9AAA  # RUSSIA (1994-01 to 2025-10)
@@ -2006,13 +2030,13 @@ datasets:
       - KOI3D9AAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI3D9AAA  # SPAIN (1975-01 to 2025-10)
       - LKI3D9AAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI3D9AAA  # SUDAN (1977-01 to 2022-10)
+      - SNI3D9AAA  # SUDAN (1977-01 to 2025-10)
       - SUI3D9AAA  # SURINAM (2005-01 to 2025-10)
       - SDI3D9AAA  # SWEDEN (1975-01 to 2025-10)
       - SWI3D9AAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI3D9AAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI3D9AAA  # THAILAND (1976-01 to 2025-10)
-      - TGI3D9AAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI3D9AAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI3D9AAA  # TURKEY (1984-01 to 2026-01)
       - UGI3D9AAA  # UGANDA (1980-01 to 2025-07)
       - URI3D9AAA  # UKRAINE (1994-01 to 2025-07)
@@ -2059,8 +2083,8 @@ datasets:
       - FJI3D9LAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI3D9LAA  # FINLAND (1975-01 to 2025-10)
       - FRI3D9LAA  # FRANCE (1975-01 to 2025-10)
-      - GEI3D9LAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI3D9LAA  # GAMBIA (2007-01 to 2025-04)
+      - GEI3D9LAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3D9LAA  # GAMBIA (2007-01 to 2026-04)
       - GGI3D9LAA  # GEORGIA (1997-01 to 2025-10)
       - BDI3D9LAA  # GERMANY (1971-01 to 2025-10)
       - GRI3D9LAA  # GREECE (1976-01 to 2025-07)
@@ -2071,7 +2095,7 @@ datasets:
       - ICI3D9LAA  # ICELAND (1976-01 to 2025-10)
       - INI3D9LAA  # INDIA (1975-01 to 2025-10)
       - IDI3D9LAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI3D9LAA  # IRELAND (2005-01 to 2025-01)
+      - IRI3D9LAA  # IRELAND (2005-01 to 2025-10)
       - ISI3D9LAA  # ISRAEL (1972-01 to 2025-10)
       - ITI3D9LAA  # ITALY (1970-01 to 2025-10)
       - JPI3D9LAA  # JAPAN (1996-01 to 2025-10)
@@ -2079,25 +2103,25 @@ datasets:
       - KZI3D9LAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI3D9LAA  # KOSOVO (2009-01 to 2025-10)
       - KYI3D9LAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI3D9LAA  # LAOS (1994-01 to 2025-04)
+      - LAI3D9LAA  # LAOS (1994-01 to 2026-04)
       - LVI3D9LAA  # LATVIA (1993-01 to 2025-10)
       - LBI3D9LAA  # LEBANON (2002-01 to 2023-10)
       - LSI3D9LAA  # LESOTHO (1982-01 to 2025-10)
       - LNI3D9LAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI3D9LAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI3D9LAA  # MACEDONIA (1996-01 to 2026-01)
-      - MDI3D9LAA  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI3D9LAA  # MALAYSIA (2001-01 to 2024-10)
+      - MDI3D9LAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3D9LAA  # MALAYSIA (2001-01 to 2026-04)
       - MAI3D9LAA  # MALTA (1995-01 to 2025-07)
       - MUI3D9LAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI3D9LAA  # MEXICO (1979-01 to 2026-01)
       - MFI3D9LAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI3D9LAA  # MONGOLIA (1998-01 to 2025-01)
+      - MGI3D9LAA  # MONGOLIA (1998-01 to 2026-04)
       - MCI3D9LAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI3D9LAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI3D9LAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - BUI3D9LAA  # MYANMAR (1976-01 to 2020-07)
       - WAI3D9LAA  # NAMIBIA (1999-01 to 2025-07)
-      - NPI3D9LAA  # NEPAL (1977-01 to 2025-04)
+      - NPI3D9LAA  # NEPAL (1977-01 to 2026-04)
       - NLI3D9LAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI3D9LAA  # NEW ZEALAND (2000-01 to 2025-10)
       - NII3D9LAA  # NICARAGUA (1992-01 to 2025-01)
@@ -2124,13 +2148,13 @@ datasets:
       - KOI3D9LAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI3D9LAA  # SPAIN (1975-01 to 2025-10)
       - LKI3D9LAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI3D9LAA  # SUDAN (1977-01 to 2022-10)
+      - SNI3D9LAA  # SUDAN (1977-01 to 2025-10)
       - SUI3D9LAA  # SURINAM (2005-01 to 2025-10)
       - SDI3D9LAA  # SWEDEN (1975-01 to 2025-10)
       - SWI3D9LAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI3D9LAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI3D9LAA  # THAILAND (1976-01 to 2025-10)
-      - TGI3D9LAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI3D9LAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI3D9LAA  # TURKEY (1984-01 to 2026-01)
       - UGI3D9LAA  # UGANDA (1980-01 to 2025-07)
       - URI3D9LAA  # UKRAINE (1994-01 to 2025-07)
@@ -2177,8 +2201,8 @@ datasets:
       - FJI3E9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
       - FNI3E9AAA  # FINLAND (1975-01 to 2025-10)
       - FRI3E9AAA  # FRANCE (1975-01 to 2025-10)
-      - GEI3E9AAA  # FRENCH GUIANA (2009-01 to 2025-07)
-      - GMI3E9AAA  # GAMBIA (2007-01 to 2025-04)
+      - GEI3E9AAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3E9AAA  # GAMBIA (2007-01 to 2026-04)
       - GGI3E9AAA  # GEORGIA (1997-01 to 2025-10)
       - BDI3E9AAA  # GERMANY (1971-01 to 2025-10)
       - GRI3E9AAA  # GREECE (1976-01 to 2025-07)
@@ -2189,7 +2213,7 @@ datasets:
       - ICI3E9AAA  # ICELAND (1976-01 to 2025-10)
       - INI3E9AAA  # INDIA (1975-01 to 2025-10)
       - IDI3E9AAA  # INDONESIA (1981-01 to 2026-01)
-      - IRI3E9AAA  # IRELAND (2005-01 to 2025-01)
+      - IRI3E9AAA  # IRELAND (2005-01 to 2025-10)
       - ISI3E9AAA  # ISRAEL (1972-01 to 2025-10)
       - ITI3E9AAA  # ITALY (1970-01 to 2025-10)
       - JPI3E9AAA  # JAPAN (1996-01 to 2025-10)
@@ -2197,25 +2221,25 @@ datasets:
       - KZI3E9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
       - KVI3E9AAA  # KOSOVO (2009-01 to 2025-10)
       - KYI3E9AAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
-      - LAI3E9AAA  # LAOS (1994-01 to 2025-04)
+      - LAI3E9AAA  # LAOS (1994-01 to 2026-04)
       - LVI3E9AAA  # LATVIA (1993-01 to 2025-10)
       - LBI3E9AAA  # LEBANON (2002-01 to 2023-10)
       - LSI3E9AAA  # LESOTHO (1982-01 to 2025-10)
       - LNI3E9AAA  # LITHUANIA (1993-01 to 2025-10)
       - LXI3E9AAA  # LUXEMBOURG (2002-01 to 2025-10)
       - MKI3E9AAA  # MACEDONIA (1996-01 to 2026-01)
-      - MDI3E9AAA  # MADAGASCAR (2003-01 to 2024-10)
-      - MYI3E9AAA  # MALAYSIA (1999-01 to 2024-10)
+      - MDI3E9AAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3E9AAA  # MALAYSIA (1999-01 to 2026-04)
       - MAI3E9AAA  # MALTA (1995-01 to 2025-07)
       - MUI3E9AAA  # MAURITIUS (2000-01 to 2025-01)
       - MXI3E9AAA  # MEXICO (1979-01 to 2026-01)
       - MFI3E9AAA  # MOLDOVA (1994-01 to 2025-10)
-      - MGI3E9AAA  # MONGOLIA (1998-01 to 2025-01)
+      - MGI3E9AAA  # MONGOLIA (1998-01 to 2026-04)
       - MCI3E9AAA  # MOROCCO (2003-01 to 2025-10)
-      - MZI3E9AAA  # MOZAMBIQUE (2005-01 to 2025-04)
+      - MZI3E9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
       - BUI3E9AAA  # MYANMAR (1976-01 to 2020-07)
       - WAI3E9AAA  # NAMIBIA (1999-01 to 2025-07)
-      - NPI3E9AAA  # NEPAL (1977-01 to 2025-04)
+      - NPI3E9AAA  # NEPAL (1977-01 to 2026-04)
       - NLI3E9AAA  # NETHERLANDS (1967-01 to 2025-07)
       - NZI3E9AAA  # NEW ZEALAND (2000-01 to 2025-10)
       - NII3E9AAA  # NICARAGUA (1992-01 to 2025-01)
@@ -2226,7 +2250,7 @@ datasets:
       - PEI3E9AAA  # PERU (1977-01 to 2025-10)
       - PHI3E9AAA  # PHILIPPINES (1977-01 to 2025-10)
       - POI3E9AAA  # POLAND (2000-01 to 2025-10)
-      - PTI3E9AAA  # PORTUGAL (1975-01 to 2025-07)
+      - PTI3E9AAA  # PORTUGAL (1975-01 to 2026-04)
       - QAI3E9AAA  # QATAR (2011-01 to 2025-10)
       - RMI3E9AAA  # ROMANIA (1991-01 to 2025-10)
       - RSI3E9AAA  # RUSSIA (1994-01 to 2021-10)
@@ -2242,13 +2266,13 @@ datasets:
       - KOI3E9AAA  # SOUTH KOREA (1976-01 to 2026-01)
       - ESI3E9AAA  # SPAIN (1975-01 to 2025-10)
       - LKI3E9AAA  # SRI LANKA (1977-01 to 2025-01)
-      - SNI3E9AAA  # SUDAN (1977-01 to 2022-10)
+      - SNI3E9AAA  # SUDAN (1977-01 to 2025-10)
       - SUI3E9AAA  # SURINAM (2005-01 to 2025-10)
       - SDI3E9AAA  # SWEDEN (1975-01 to 2025-10)
       - SWI3E9AAA  # SWITZERLAND (1999-01 to 2025-10)
       - TJI3E9AAA  # TAJIKISTAN (2002-01 to 2025-10)
       - THI3E9AAA  # THAILAND (1976-01 to 2025-10)
-      - TGI3E9AAA  # TONGA ISLANDS (1977-07 to 2024-10)
+      - TGI3E9AAA  # TONGA ISLANDS (1977-07 to 2026-01)
       - TKI3E9AAA  # TURKEY (1984-01 to 2026-01)
       - UGI3E9AAA  # UGANDA (1980-01 to 2025-07)
       - URI3E9AAA  # UKRAINE (1994-01 to 2025-07)
@@ -2268,7 +2292,7 @@ datasets:
   # Source: tr_ds_comds.wrds_cmdy_info + wrds_cmdy_data via wrds_ds_comds adapter.
   # Precious metals (USD/troy oz): gold (1968), silver (1970/2012), platinum (1976),
   #   palladium (1987).
-  # LME base metals (USD/MT): aluminium 99.7% (LAHCASH, 1988), aluminium alloy
+  # LME base metals (USD/MT): aluminium 99.7% (LAHCASH, 1988; monthly until 1993-06), aluminium alloy
   #   (LADCASH, 1993), lead (LEDCASH, 1993).
   # Note: LME cash prices for copper, zinc, nickel, tin are NOT in tr_ds_comds —
   #   need to locate in tr_ds_equities or tr_ds_fut (TODO). Use LCP15MT/LZZ15MT/
@@ -2286,7 +2310,7 @@ datasets:
       - PLATFRE    # Platinum London Free Market USD/troy oz (1976–present)
       - PALLADM    # Palladium USD/troy oz (1987–present)
       # LME base metals (confirmed in tr_ds_comds, USD/MT)
-      - LAHCASH    # LME Aluminium 99.7% Cash USD/MT (1988–present)
+      - LAHCASH    # LME Aluminium 99.7% Cash USD/MT (1988–present; monthly until 1993-06)
       - LADCASH    # LME Aluminium Alloy Cash USD/MT (1993–present)
       - LEDCASH    # LME Lead Cash USD/MT (1993–present)
     note: >
@@ -2297,30 +2321,31 @@ datasets:
       prices are NOT in tr_ds_comds; see TODO in config.
 
   # ── Energy commodities (Datastream) ──────────────────────────────────────────
-  # Brent spot: OILBREN = BFO Month 1 USD/barrel (1970–present, 13,443 obs).
-  # Nat gas: NATLGAS = Henry Hub USD/MMBTU (1993–2020, dead 2020). Active UK
+  # Brent spot: OILBREN = BFO Month 1 USD/barrel (1970–present, 11,197 obs; monthly until 1981).
+  # Nat gas: NATLGAS = Henry Hub USD/MMBTU (1993–2018-08 daily, one stray obs 2020-09; dead). Active UK
   #   NBP gas is NATBGAS (GBP, ICE). No active USD Henry Hub spot in comds.
-  # Heating oil: EIAHONY = NY Harbor Spot FOB USD/gallon (1986–present).
-  # Gasoline: GSUNLRG = Unleaded Regular Non-Oxy NY USD/gallon (1983–present).
+  # Heating oil: EIAHONY = NY Harbor Spot FOB USD/gallon (1986–present, WEEKLY).
+  # Gasoline: GSUNLRG = Unleaded Regular Non-Oxy NY US cents/gallon (1983–present).
   - name: ds_energy_comds
     source: wrds_ds_comds
     start: "1970-01-01"
     incremental_key: date_
     mnemonics:
-      - OILBREN    # Brent crude BFO Month 1 USD/barrel (1970–present)
-      - NATLGAS    # Henry Hub natural gas USD/MMBTU (1993–2020 dead)
-      - EIAHONY    # Heating oil No.2 NYH Spot FOB USD/gallon (1986–present)
-      - GSUNLRG    # Gasoline unleaded regular NY USD/gallon (1983–present)
+      - OILBREN    # Brent crude BFO Month 1 USD/barrel (1970–present; monthly until 1981)
+      - NATLGAS    # Henry Hub natural gas USD/MMBTU (1993–2018-08, dead)
+      - EIAHONY    # Heating oil No.2 NYH Spot FOB USD/gallon (1986–present, weekly)
+      - GSUNLRG    # Gasoline unleaded regular NY US cents/gallon (1983–present)
     note: >
       Energy commodity spot prices from LSEG Datastream via WRDS tr_ds_comds.
-      WTI crude is separate (ds_wti_front, ds_wti_curve). NATLGAS ends 2020-09
-      (dead series); no active USD Henry Hub in tr_ds_comds after that date.
+      WTI crude is separate (ds_wti_front, ds_wti_curve). NATLGAS daily data end
+      2018-08 (plus one stale obs on 2020-09-24; dead series); no active USD Henry Hub
+      in tr_ds_comds after that. EIAHONY is weekly; GSUNLRG is in US cents/gallon.
 
   # ── Agricultural commodities (Datastream) ────────────────────────────────────
   # Grains: wheat (WHEATMP, spring Minneapolis, 1979), corn (CORNUS2, 1979),
   #   soybeans (SOYBEAN, 1979) — all USD/bushel.
-  # Softs: coffee (COFDICA, ICO composite daily, 1986, USD/lb), cocoa (COCINUS,
-  #   ICCO daily USD/MT, 1985), sugar (WSUGDLY, ISA daily USD/lb, 1985),
+  # Softs: coffee (COFDICA, ICO composite daily, 1986, US cents/lb), cocoa (COCINUS,
+  #   ICCO daily USD/MT, 1985), sugar (WSUGDLY, ISA daily US cents/lb, 1985),
   #   cotton (COTTONM, Memphis USD/lb, 1980).
   - name: ds_agri_comds
     source: wrds_ds_comds
@@ -2330,13 +2355,13 @@ datasets:
       - WHEATMP    # Wheat spring Minneapolis USD/bushel (1979–present)
       - CORNUS2    # Corn No.2 yellow central Illinois USD/bushel (1979–present)
       - SOYBEAN    # Soybeans No.1 yellow USD/bushel (1979–present)
-      - COFDICA    # Coffee ICO Composite daily USD/lb (1986–present)
+      - COFDICA    # Coffee ICO Composite daily US cents/lb (1986–present)
       - COCINUS    # Cocoa ICCO daily price USA USD/MT (1985–present)
-      - WSUGDLY    # Raw sugar ISA daily price USD/lb (1985–present)
+      - WSUGDLY    # Raw sugar ISA daily price US cents/lb (1985–present)
       - COTTONM    # Cotton 1-1/16 STR Low-Middling Memphis USD/lb (1980–present)
     note: >
       Agricultural commodity spot prices from LSEG Datastream via WRDS tr_ds_comds.
-      Grains are USD/bushel; softs are USD/lb or USD/MT as noted.
+      Grains are USD/bushel; cocoa USD/MT, cotton USD/lb, coffee and sugar US cents/lb.
 
   # ── Commodity indices (Datastream) ────────────────────────────────────────────
   # S&P GSCI family (1969–present): spot, total return, excess return variants.
@@ -2367,14 +2392,14 @@ datasets:
 
   # ── Country equity index panel (Datastream) ───────────────────────────────────
   # Source: tr_ds_equities.ds2equityindex + ds2indexdata via wrds_ds_index adapter.
-  # ~42 major markets. pi_ = price index (ex-dividend), ri = return index (total).
+  # 47 markets. pi_ = price index (ex-dividend), ri = return index (total; empty for 14 of 47).
   # Index selection: active series with longest history per country-code region,
   # verified 2026-06-25 from ds2equityindex + ds2indexdata.
   # Notes on known caveats:
   #   GB: FTATNOF = FTSE Total Non-Financial (sub-index); FTSE All-Share TBD.
   #   FR: FTEFRFY = FTSEUR1ST 300 France (JPY-denominated); EUR version TBD.
   #   BR: D2BRFS$ = DJGL Brazil Financial Services; Bovespa (BOVESPA) TBD.
-  #   PH: PSEMINE = Philippine SE Mining & Oil sub-index; PSEi composite TBD.
+  #   PH: not included (only candidate found, PSEMINE, is the Mining & Oil sub-index; PSEi TBD).
   - name: ds_equity_indices
     source: wrds_ds_index
     start: "1950-01-01"
@@ -2437,7 +2462,9 @@ datasets:
     note: >
       Country equity price (pi_) and total return (ri) indices from LSEG Datastream
       via WRDS tr_ds_equities. Selection: active index with longest history per country.
-      See inline comments for currency and known caveats (GB, FR, BR, PH).
+      See inline comments for currency and known caveats (GB, FR, BR; PH not included).
+      ri is empty for ARGMERV AUSTOLD BRUSIDX BUXINDX EGHREFG HCMNVNE IGPAGEN ISTGENS
+      JAKCOMP MADRIDI NSEINDX OMXAFGX PKSE100 TRKISTB.
 
   # ── CFTC Commitments of Traders: FX futures positions by sector ──────────────
   # Weekly. Positions as of Tuesday, released Friday 3:30pm ET.

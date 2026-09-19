@@ -7,8 +7,7 @@ Source tables:
   tr_ds_econ.ecodata       — observations: ecoseriesid, perioddate, series_value
 
 Note: ecodata uses ecoseriesid (not dsmnemonic) as its key, so we always join
-      through wrds_ecoinfo. The column names differ from CLAUDE.md docs which
-      referred to the raw ecoinfo/ecodata tables (not the wrds_* views).
+      through wrds_ecoinfo.
 
 Config keys (datasets.yaml)
 ----------------------------

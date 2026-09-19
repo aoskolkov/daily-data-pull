@@ -13,7 +13,7 @@ ds2indexdata : daily prices (421M rows)
 Config keys (datasets.yaml)
 ----------------------------
   source: wrds_ds_index
-  mnemonics: [TOTMKUS, TOTMKGB, ...]  # dsindexmnem values; empty = pull all active
+  mnemonics: [TOTMKUS, TOTMKGB, ...]  # dsindexmnem values; empty = pull all (no status filter)
   fields:    [pi_, ri, mv]            # value columns to pull (default: pi_ and ri)
   start:     "1980-01-01"
   incremental_key: valuedate

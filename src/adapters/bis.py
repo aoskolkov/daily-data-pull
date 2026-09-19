@@ -1,50 +1,41 @@
 """
 Adapter for BIS (Bank for International Settlements) statistical data.
 
-Uses the BIS Statistics REST API (SDMX-JSON / CSV format).
-Documentation: https://stats.bis.org/api/v1/
+Uses the BIS Statistics REST API (SDMX 2.1): https://stats.bis.org/api/v1/
 
-Available dataflows (most useful for macro/finance research)
--------------------------------------------------------------
-  WS_DEBT_SEC2   International debt securities outstanding (quarterly)
-                 Dimensions: FREQ · MEASURE · ISSUE_TYPE · SECTOR ·
-                             ORG_COUNTRY · CURR_TYPE_BOOK · CURR_TYPE_ISSUE ·
-                             MATURITY · RATE · SECTOR_COUNT · OBS_TYPE
-  WS_LBS_D_PUB   BIS locational banking statistics (quarterly)
-  WS_CBS_PUB     BIS consolidated banking statistics (quarterly)
-  WS_EER         Effective exchange rates (monthly)
-  WS_TC          Total credit to private non-financial sector (quarterly)
-  WS_CREDIT_GAP  Credit-to-GDP gap (quarterly)
-  WS_CBPOL_D     Central bank policy rates (daily)
+Dataflows used in config/datasets.yaml (dimension order = key order)
+--------------------------------------------------------------------
+  WS_DEBT_SEC2_PUB  International debt securities (quarterly). 15 dimensions:
+                    FREQ.ISSUER_RES.ISSUER_NAT.ISSUER_BUS_IMM.ISSUER_BUS_ULT.MARKET.
+                    ISSUE_TYPE.ISSUE_CUR_GROUP.ISSUE_CUR.ISSUE_OR_MAT.ISSUE_RE_MAT.
+                    ISSUE_RATE.ISSUE_RISK.ISSUE_COL.MEASURE
+  WS_LBS_D_PUB      Locational banking statistics (quarterly)
+  WS_EER            Effective exchange rates (monthly; FREQ.EER_TYPE.EER_BASKET.REF_AREA)
+  WS_CBPOL          Central bank policy rates (key "D." = daily, all countries)
+  Others: WS_CBS_PUB (consolidated banking), WS_TC (total credit), WS_CREDIT_GAP.
+  The older ID WS_DEBT_SEC2 no longer exists.
 
 Config keys (datasets.yaml)
 ----------------------------
   source:    bis
-  dataflow:  WS_DEBT_SEC2   # BIS dataset identifier
-  key:       Q.N.A.A.M.B.USD.O.G.S.A.A
-             # dot-separated dimension values; use 'A' (=all) for a dimension
-             # to avoid filtering. Order must match the dataflow's dimension list.
+  dataflow:  WS_DEBT_SEC2_PUB
+  key:       Q.....C.A..TO1.A.A.A.A.A.I
+             # dot-separated, one position per dimension in dataflow order.
+             # A blank position is the wildcard; "A" is a literal code (often
+             # "all"/"total" in BIS codelists), so it filters to that code.
   start:     "1993-01-01"
+  period_format: quarterly   # or monthly / daily — must match FREQ for startPeriod
   incremental_key: date
-
-Key presets for common use cases
----------------------------------
-  # International debt securities, all sectors, USD amounts, all countries
-  key: Q.N.A.A.M.B.USD.O.G.S.A.A
-
-  # Government sector only
-  # Set SECTOR dimension (position 4) to a government code.
-  # Use discover mode to list codes: python wrdsdl.py discover bis --dataflow WS_DEBT_SEC2
 
 Output columns
 --------------
-  date, <dimension_cols...>, obs_value
-  (dimension columns depend on the dataflow and key)
+  date, <dimension columns...>, obs_value, plus the CSV's attribute columns
+  (e.g. unit_measure, unit_mult, decimals, obs_status, obs_conf, title/title_ts)
 
 Discover mode
 -------------
-  python wrdsdl.py discover bis --dataflow WS_DEBT_SEC2
-  Returns dimension names and code lists for any BIS dataflow.
+  python wrdsdl.py discover bis --dataset WS_DEBT_SEC2_PUB
+  Lists every dimension (in key order) with its codes and labels.
 """
 
 from __future__ import annotations
@@ -75,37 +66,31 @@ def _get_csv(url: str, params: dict | None = None) -> str:
 
 def discover(dataflow: str) -> dict[str, dict[str, str]]:
     """
-    Return dimension names and code lists for a BIS dataflow.
-    Used by: python wrdsdl.py discover bis --dataflow <DATAFLOW>
+    {dimension: {code: label}} for a BIS dataflow, dimensions in key order.
+    Used by: python wrdsdl.py discover bis --dataset <DATAFLOW>
+
+    The data structure ID differs from the dataflow ID (WS_DEBT_SEC2_PUB uses
+    BIS_DEBT_SEC2), so fetch the dataflow with all its references instead.
     """
-    # Fetch dataflow structure
-    url = f"{_BIS_API}/datastructure/BIS/{dataflow}"
-    data = _get(url)
+    import requests
+    import xml.etree.ElementTree as ET
 
+    resp = requests.get(f"{_BIS_API}/dataflow/BIS/{dataflow}/latest",
+                        params={"references": "all", "detail": "full"}, timeout=120)
+    resp.raise_for_status()
+    root = ET.fromstring(resp.content)
+    s = "{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/structure}"
+    c = "{http://www.sdmx.org/resources/sdmxml/schemas/v2_1/common}"
+
+    codelists = {
+        cl.get("id"): {code.get("id"): code.findtext(f"{c}Name", "") for code in cl.findall(f"{s}Code")}
+        for cl in root.iter(f"{s}Codelist")
+    }
+    dims = sorted(root.iter(f"{s}Dimension"), key=lambda d: int(d.get("position", 0)))
     result: dict[str, dict[str, str]] = {}
-
-    try:
-        structure = data["data"]["dataStructures"][0]
-        dimensions = structure["dataStructure"]["dataStructureComponents"]["dimensionList"]["dimensions"]
-        for dim in dimensions:
-            dim_id = dim["id"]
-            codes: dict[str, str] = {}
-            # Code list may be inline or referenced
-            codelist = dim.get("localRepresentation", {}).get("enumeration", {})
-            if codelist:
-                for item in codelist.get("items", []):
-                    codes[item["id"]] = item.get("name", {}).get("en", item["id"])
-            result[dim_id] = codes
-    except (KeyError, IndexError, TypeError):
-        # Try v2 format
-        try:
-            structure = data["data"]["dataStructures"][0]
-            dims = structure["dataStructureComponents"]["dimensionList"]["dimensions"]
-            for dim in dims:
-                result[dim["id"]] = {}
-        except Exception:
-            pass
-
+    for dim in dims:
+        ref = dim.find(f"{s}LocalRepresentation/{s}Enumeration/Ref")
+        result[dim.get("id")] = codelists.get(ref.get("id"), {}) if ref is not None else {}
     return result
 
 
@@ -165,7 +150,7 @@ def _date_to_period(d: str, fmt: str = "quarterly") -> str:
     """Convert ISO date string to BIS period notation.
 
     fmt: 'quarterly' → YYYY-Q#  (default, for WS_DEBT_SEC2_PUB etc.)
-         'monthly'   → YYYY-MM   (for WS_CBPOL monthly)
+         'monthly'   → YYYY-MM   (for WS_EER monthly)
          'daily'     → YYYY-MM-DD (for WS_CBPOL daily)
     """
     dt = pd.to_datetime(d)

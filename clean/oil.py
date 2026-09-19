@@ -1,9 +1,9 @@
-﻿"""
+"""
 Clean oil price data from raw downloads.
 
 Sources
 -------
-  data/ds_wti_front/   WTI front-month continuous (Datastream NCLCS00, monthly batch on WRDS)
+  data/ds_wti_front/   WTI spot, Cushing (Datastream CRUDOIL via tr_ds_comds, daily)
   data/fred_wti_spot/  WTI spot price (FRED DCOILWTICO, daily)
 
 Both sources are already in USD/barrel — no cross-rate conversion needed.
@@ -98,9 +98,8 @@ def load_datastream(input_dir: str) -> pd.DataFrame | None:
     Heuristically detect date and price columns.
     Returns long DataFrame: date, price_usd_bbl
 
-    [VERIFY] If this fails, inspect the raw data:
+    If detection fails, inspect the raw data:
         import pandas as pd; print(pd.read_parquet('data/ds_wti_front').head())
-    Then set --ds-date-col / --ds-price-col if auto-detection is wrong.
     """
     path = Path(input_dir)
     if not path.exists():
@@ -125,7 +124,8 @@ def load_datastream(input_dir: str) -> pd.DataFrame | None:
         return None
 
     df["price_usd_bbl"] = pd.to_numeric(df[price_col], errors="coerce")
-    result = df[["date", "price_usd_bbl"]].dropna().sort_values("date").reset_index(drop=True)
+    result = (df[["date", "price_usd_bbl"]].dropna()
+              .groupby("date", as_index=False).last())    # one price per day
     print(f"Datastream (ds_wti_front): {len(result):,} rows, "
           f"{result['date'].min()} -> {result['date'].max()}")
     return result

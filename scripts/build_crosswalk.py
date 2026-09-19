@@ -122,6 +122,15 @@ COMMON_NAMES: dict[str, str] = {
     "XK": "Kosovo",
 }
 
+# ISO3 for territories the World Bank country list does not cover
+NON_WB_ISO3: dict[str, str] = {
+    "TW": "TWN",   # Taiwan
+    "VA": "VAT",   # Holy See
+    "AI": "AIA",   # Anguilla
+    "MS": "MSR",   # Montserrat
+    "EH": "ESH",   # Western Sahara
+}
+
 # Cases where the World Bank 3-letter code differs from ISO 3166-1 alpha-3
 WB_TO_ISO3: dict[str, str] = {
     "ROM": "ROU",   # Romania
@@ -182,9 +191,15 @@ def fetch_wb_countries() -> pd.DataFrame:
     try:
         import pandas_datareader.wb as wb
         raw = wb.get_countries()
-        # id is the index in some versions, a column in others
-        if raw.index.name == "id" or "id" not in raw.columns:
-            raw = raw.reset_index().rename(columns={"index": "id"})
+        # The 3-letter code is column "iso3c" in pandas_datareader 0.10 and the
+        # "id" column or index in older versions. Resetting a plain RangeIndex
+        # would turn row numbers into codes (how iso3c once came out as 0, 2, 5).
+        if "iso3c" in raw.columns:
+            raw = raw.rename(columns={"iso3c": "id"})
+        elif raw.index.name == "id":
+            raw = raw.reset_index()
+        if "id" not in raw.columns:
+            raise ValueError(f"no country-code column in {list(raw.columns)}")
         raw = raw[raw["region"] != "Aggregates"].copy()
         raw = raw.rename(columns={"id": "wb_code", "name": "wb_name"})
         raw = raw[["wb_code", "iso2c", "wb_name"]].dropna(subset=["iso2c"])
@@ -215,7 +230,7 @@ def build(offline: bool = False) -> pd.DataFrame:
     for iso2c, currency in CURRENT_CURRENCY.items():
         wb_code, wb_name = wb_lookup.get(iso2c, ("", ""))
         # Map WB code to iso3c; use WB_TO_ISO3 overrides where needed
-        iso3c = WB_TO_ISO3.get(wb_code, wb_code) if wb_code else ""
+        iso3c = WB_TO_ISO3.get(wb_code, wb_code) if wb_code else NON_WB_ISO3.get(iso2c, "")
 
         rows.append({
             "iso3c":          iso3c,
@@ -233,7 +248,7 @@ def build(offline: bool = False) -> pd.DataFrame:
     # Historical currencies
     for iso2c, currency, valid_from, valid_to in HISTORICAL:
         wb_code, wb_name = wb_lookup.get(iso2c, ("", ""))
-        iso3c = WB_TO_ISO3.get(wb_code, wb_code) if wb_code else ""
+        iso3c = WB_TO_ISO3.get(wb_code, wb_code) if wb_code else NON_WB_ISO3.get(iso2c, "")
         rows.append({
             "iso3c":          iso3c,
             "iso2c":          iso2c,

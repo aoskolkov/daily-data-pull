@@ -1,7 +1,7 @@
 """
 Clean MSCI equity index data → macrodata/msci/.
 
-Reads:  data/msci/   (long Parquet: date, iso2, gross_tr, price_idx)
+Reads:  data/msci_indices/   (long Parquet: date, iso2, gross_tr, price_idx; USD, monthly)
 Writes: macrodata/msci/msci_gross_tr_wide.{parquet,csv}   — gross total return index
         macrodata/msci/msci_price_wide.{parquet,csv}       — price return index
 """
@@ -18,7 +18,7 @@ OUT_DIR = ROOT / "macrodata" / "msci"
 
 def main(no_csv: bool = False) -> None:
     if not DATA_DIR.exists() or not any(DATA_DIR.iterdir()):
-        print("msci: no data in data/msci/ — run: python wrdsdl.py pull msci_indices")
+        print("msci: no data in data/msci_indices/ — run: python wrdsdl.py pull msci_indices")
         return
 
     df = pd.read_parquet(DATA_DIR)

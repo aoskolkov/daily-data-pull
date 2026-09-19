@@ -211,8 +211,8 @@ def cmd_discover(args, conn_config: dict) -> None:
     if args.library.lower() == "bis":
         dataflow = getattr(args, "dataset", None)
         if not dataflow:
-            print("Usage: python wrdsdl.py discover bis --dataflow <DATAFLOW>")
-            print("Example dataflows: WS_DEBT_SEC2, WS_LBS_D_PUB, WS_TC, WS_EER, WS_CBPOL_D")
+            print("Usage: python wrdsdl.py discover bis --dataset <DATAFLOW>")
+            print("Example dataflows: WS_DEBT_SEC2_PUB, WS_LBS_D_PUB, WS_TC, WS_EER, WS_CBPOL")
             return
         print(f"\nBIS dataflow: {dataflow}")
         dims = bis.discover(dataflow)
@@ -287,7 +287,7 @@ _CLEAN_SCRIPTS: list[tuple[str, list[str]]] = [
     ("clean/fx_spot.py",        []),
     ("clean/fx_forward.py",     []),
     ("clean/oil.py",            []),
-    ("clean/oil_curve.py",      ["--no-brent"]),   # Brent skipped until mnemonics verified
+    ("clean/oil_curve.py",      []),
     ("clean/inflation.py",      []),
     ("clean/macro.py",          []),
     ("clean/capital_flows.py",  []),
@@ -361,7 +361,7 @@ def main() -> None:
     p_discover = sub.add_parser("discover", help="Explore WRDS library/table structure, IMF dataset codes, or BIS dataflows")
     p_discover.add_argument("library", help="WRDS library (e.g. comp, crsp), 'imf', or 'bis'")
     p_discover.add_argument("--table", help="Describe and sample a specific WRDS table")
-    p_discover.add_argument("--dataset", help="IMF dataset code (e.g. BOP) or BIS dataflow (e.g. WS_DEBT_SEC2)")
+    p_discover.add_argument("--dataset", help="IMF dataset code (e.g. BOP) or BIS dataflow (e.g. WS_DEBT_SEC2_PUB)")
 
     sub.add_parser("validate", help="Check subscriptions and schema against manifest")
     sub.add_parser("catalog", help="Show pull history from catalog")
