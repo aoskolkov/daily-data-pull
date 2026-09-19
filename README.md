@@ -23,7 +23,9 @@ A config-driven pipeline for pulling, storing, and cleaning financial and macroe
 | VIX family | Daily | FRED | 1990–present (VIX), 2007–present (VXV 3-month) |
 | World Bank macro | Annual | World Bank API | 1960–present, ~180–215 countries |
 | World Bank fiscal | Annual | World Bank API | 1990–2011 for USD levels (~35 countries); 1990–2024 for expenditure and debt % of GDP (109–159 countries) |
-| IMF BOP/IIP/PIP (CPIS)/DIP (CDIS) | Annual | IMF data API (api.imf.org) | 1980–present (BOP/IIP), 2001– (PIP), 2009– (DIP) |
+| IMF BOP/IIP/PIP (CPIS)/DIP (CDIS) | Annual | IMF data API (api.imf.org) | 1980–present (BOP/IIP), 2001– (PIP), 2009– (DIP); BOP includes goods/services/income as credit, debit and net |
+| IMF trade in goods, country totals | Monthly + annual | IMF data API (ITG) | monthly 1957–present (108 economies), annual 1948–present (191); exports FOB, imports CIF, USD |
+| IMF bilateral trade in goods | Annual | IMF data API (IMTS, ex-DOTS) | 1948–present, ~237 reporters × ~245 partners |
 | World Bank International Debt Statistics | Annual | World Bank API (IDS + WDI archives) | 1970–present |
 | IMF World Economic Outlook | Annual | IMF bulk download | 1980–2029, 196 countries, 15 indicators |
 | Monthly CPI (IMF IFS) | Monthly | WRDS Datastream (tr_ds_econ) | 1950–present, 164 countries, index + YoY |
@@ -156,6 +158,7 @@ clean/                   # one script per output family
   inflation.py           # → macrodata/inflation/
   macro.py               # → macrodata/macro/
   capital_flows.py       # → macrodata/capital_flows/
+  trade.py               # → macrodata/trade/
   bilateral.py           # → macrodata/bilateral/
   vol.py                 # → macrodata/vol/
   interest_rates.py      # → macrodata/interest_rates/cbpol_wide + bond_yield_10y_wide
