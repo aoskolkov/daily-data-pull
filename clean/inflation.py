@@ -3,9 +3,10 @@ Clean inflation data from raw downloads.
 
 Sources
 -------
-  data/wb_cpi/        World Bank CPI index (2010=100), annual, ~180 countries
-  data/wb_inflation/  World Bank CPI inflation rate (%), annual, ~180 countries
-  data/oecd_cpi/      OECD CPI monthly, ~40 countries
+  data/wb_cpi/        World Bank CPI index (2010=100), annual, ~190 countries
+  data/wb_inflation/  World Bank CPI inflation rate (%), annual, ~190 countries
+  data/oecd_cpi/      OECD CPI monthly — NOT pulled: oecd_cpi is disabled in
+                      config/datasets.yaml (OECD API moved), so no OECD output exists
 
 Outputs
 -------
@@ -13,7 +14,7 @@ Outputs
   macrodata/inflation/wb_cpi_wide.csv
   macrodata/inflation/wb_inflation_wide.parquet dates × countries (inflation %, annual)
   macrodata/inflation/wb_inflation_wide.csv
-  macrodata/inflation/oecd_cpi_wide.parquet    dates × countries (CPI level, monthly)
+  macrodata/inflation/oecd_cpi_wide.parquet    dates × countries (CPI level, monthly; only if data/oecd_cpi exists)
   macrodata/inflation/oecd_cpi_wide.csv
 
 All wide outputs: rows = dates, columns = ISO3 country codes (iso3c).
@@ -23,7 +24,7 @@ Usage
   python clean/inflation.py
   python clean/inflation.py --no-csv
   python clean/inflation.py --source wb       # only World Bank
-  python clean/inflation.py --source oecd     # only OECD
+  python clean/inflation.py --source oecd     # only OECD (no data while oecd_cpi is disabled)
 """
 
 from __future__ import annotations
@@ -81,7 +82,7 @@ def load_oecd(input_dir: str) -> pd.DataFrame | None:
     """
     path = Path(input_dir)
     if not path.exists():
-        print("Skipping oecd_cpi: not yet pulled (run: python wrdsdl.py pull oecd_cpi)")
+        print("Skipping oecd_cpi: not pulled (dataset disabled in config/datasets.yaml)")
         return None
 
     df = pd.read_parquet(path)
@@ -156,7 +157,7 @@ def main() -> None:
         df_cpi = load_worldbank(WB_CPI_INPUT, "World Bank CPI level")
         if df_cpi is not None:
             wide = wb_to_wide(df_cpi)
-            n_countries = wide.shape[1] - 1  # exclude year column
+            n_countries = wide.shape[1] - 1  # exclude date column
             print(f"  Wide: {len(wide)} years × {n_countries} countries")
             save(wide, "wb_cpi_wide", out_dir, args.csv)
             any_done = True
@@ -182,8 +183,7 @@ def main() -> None:
         print(
             "\nNothing processed. Pull data first:\n"
             "  python wrdsdl.py pull wb_cpi\n"
-            "  python wrdsdl.py pull wb_inflation\n"
-            "  python wrdsdl.py pull oecd_cpi",
+            "  python wrdsdl.py pull wb_inflation",
             file=sys.stderr,
         )
         sys.exit(1)

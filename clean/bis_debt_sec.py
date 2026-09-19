@@ -1,22 +1,29 @@
-﻿"""
+"""
 Clean script for BIS international debt securities data.
 
-Input:  data/bis_debt_sec/
-Output: macrodata/bis_debt_sec_by_nat_wide.{parquet,csv}   — by issuer nationality
-        macrodata/bis_debt_sec_by_res_wide.{parquet,csv}   — by issuer residence
-        macrodata/bis_debt_sec_meta.csv
+Input:  data/bis_debt_sec/   (amounts outstanding, all maturities; see datasets.yaml)
+Output: macrodata/bis_debt_sec/bis_debt_sec_by_nat_wide.{parquet,csv}   — by issuer nationality
+        macrodata/bis_debt_sec/bis_debt_sec_by_res_wide.{parquet,csv}   — by issuer residence
+        macrodata/bis_debt_sec/bis_debt_sec_meta.csv
 
 The BIS data has two key country dimensions:
   issuer_res  — country where the issuer is resident
   issuer_nat  — country of the issuer's ultimate nationality
 
-"By nationality" (issuer_res='3P', issuer_nat=<country>) is the BIS's primary
-standard breakdown: total international debt issued by entities of that nationality,
-regardless of where they are resident. This is the series usually cited in reports.
+"3P" is BIS code "all countries excluding residents"; paired with a country in the
+other dimension it gives the published aggregate:
 
-"By residence" (issuer_res=<country>, issuer_nat='3P') is the complement:
-total international debt issued by entities resident in that country, regardless
-of their nationality.
+"By nationality" (issuer_res='3P', issuer_nat=<country>): international debt issued
+by entities of that nationality, wherever they are resident. The series usually
+cited in reports (US, 2026-Q2: ~$7.1tn).
+
+"By residence" (issuer_res=<country>, issuer_nat='3P'): international debt issued
+by entities resident in that country, whatever their nationality (US: ~$3.1tn).
+
+Each country also has rows by issuer sector (issuer_bus_imm/ult) and currency group
+(issue_cur_group D/F); those are sub-totals, so only the all-sector ('1'),
+all-currency ('A') row is kept. Summing every row (as before 2026-09-19) counted
+the same debt several times.
 
 Amounts are USD millions (unit_mult=6, unit_measure=USD).
 """
@@ -51,11 +58,14 @@ def load() -> pd.DataFrame:
 
 def make_wide(df: pd.DataFrame, country_col: str, filter_col: str, filter_val: str) -> pd.DataFrame:
     """Pivot to wide: date × country."""
-    sub = df[(df[filter_col] == filter_val) & _is_iso2(df[country_col])].copy()
-    sub = sub.dropna(subset=["obs_value"])
-    # Some country/date combos may have multiple rows (different issuer_bus_* or other dims);
-    # sum them to get a single figure per country per date.
-    agg = sub.groupby(["date", country_col], as_index=False)["obs_value"].sum()
+    total = (
+        (df[filter_col] == filter_val) & _is_iso2(df[country_col])
+        & (df["issuer_bus_imm"].astype(str) == "1") & (df["issuer_bus_ult"].astype(str) == "1")
+        & (df["issue_cur_group"].astype(str) == "A")
+    )
+    sub = df[total].dropna(subset=["obs_value"])
+    # One total row per country and quarter; last() only absorbs partition-boundary repeats.
+    agg = sub.groupby(["date", country_col], as_index=False)["obs_value"].last()
     wide = agg.pivot(index="date", columns=country_col, values="obs_value").sort_index()
     wide.columns.name = None
     return wide

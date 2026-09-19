@@ -2,16 +2,16 @@
 Clean script for IMF World Economic Outlook (WEO) data.
 
 Input:  data/imf_weo/
-Output: macrodata/weo_wide.{parquet,csv}      — one column per (subject × country) [tall format]
-        macrodata/weo_{subject}_wide.{parquet,csv}  — one file per subject, date × country
-        macrodata/weo_meta.csv
+Output: macrodata/imf_weo/weo_{subject}_wide.{parquet,csv}  — one file per subject:
+            index date (annual, Jan 1 of each year) × country-name columns
+        macrodata/imf_weo/weo_long.{parquet,csv}  — all subjects, long:
+            (date, country, subject_code, subject_descriptor, units, value)
+        macrodata/imf_weo/weo_meta.csv  — subject → descriptor, units, coverage
 
-The WEO data is an annual panel: 196 countries × 11 subjects × ~50 years.
-The primary output is weo_wide.parquet with:
-  - index: date (annual, Jan 1 of each year)
-  - columns: MultiIndex (subject_code, country) or flattened "SUBJECT__CC" labels
-
-Per-subject files are also written for convenience.
+The WEO data is an annual panel: 196 countries × 15 subjects × 50 years
+(1980–2029, including IMF projections). Units differ by subject — see the units
+column: e.g. GGXWDG_NGDP is % of GDP, GGXWDG is national currency (billions),
+NGDPD is billions of USD.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ def main(argv=None) -> None:
             wide.to_csv(OUT / f"weo_{subj.lower()}_wide.csv")
         print(f"    {subj:15s}  {wide.shape[1]:3d} countries  {wide.shape[0]:3d} years  | {desc[:55]}")
 
-    # Write combined long CSV for easy inspection (not pivoted, all subjects)
+    # Write combined long file (parquet + CSV) for easy inspection (not pivoted, all subjects)
     summary_cols = ["date", "country", "subject_code", "subject_descriptor", "units", "value"]
     keep = [c for c in summary_cols if c in df.columns]
     df_out = df[keep].sort_values(["subject_code", "country", "date"]).reset_index(drop=True)

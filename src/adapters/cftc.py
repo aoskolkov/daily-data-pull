@@ -24,8 +24,9 @@ Three report families are supported via the `report` config key:
             other financial contracts. Weekly from 2006-06-13.
 
 Note that "long"/"short" exclude spreading positions, which are reported
-separately. Net positioning for a sector is therefore long - short, and
-long + short + spread sums toward open interest.
+separately. Net positioning for a sector is therefore long - short. Summed
+over all categories, longs + spreads = open interest (and likewise shorts +
+spreads; exact in every TFF row, ~96% of legacy rows); sector nets sum to zero.
 
 Filter by contract CODE, not name
 ---------------------------------

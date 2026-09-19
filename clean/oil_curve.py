@@ -5,7 +5,8 @@ WTI (NYMEX CL):  months 1-12 via ds_wti_curve  (NWS{MMYY} contracts, source=wrds
 Brent (ICE):     months 1-12 via ds_brent_curve (LLC{MMYY} contracts, source=wrds_fut)
 
 The wrds_fut adapter ranks contracts by lasttrddate on each date to build
-nearby 1-12 (constant-maturity roll). Output column is 'nearby' (integer).
+nearby 1-12 (F1 = contract with the earliest last trading day; this is a
+nearby-contract roll, not constant maturity). Output column is 'nearby' (integer).
 
 Also handles legacy Datastream mnemonic format (NCLCS00->F1, NCLCS01->F2, etc.)
 in case the old multi-mnemonic format is used.
@@ -15,28 +16,28 @@ Tenor mapping:
   OR mnemonic column: NCLCS00->1, NCLCS01->2, ..., NCLCS11->12
 
 Metrics computed (per commodity):
-  slope_12_1   log(F12 / F1) / 11     annualised log slope per month
+  slope_12_1   log(F12 / F1) / 11     log slope per month (not annualised)
                                        negative = backwardation, positive = contango
   slope_6_1    log(F6  / F1) / 5      short-end slope
   spread_2_1   F2 - F1                front calendar spread (USD/bbl per roll)
   spread_3_1   F3 - F1
   basis        F1 - spot              futures premium over spot (USD/bbl)
-                                       only if spot series (fred_wti_spot) is available
+                                       WTI only, if spot series (fred_wti_spot) is available
 
-Output
+Output  ({commodity} = wti, brent)
 ------
   macrodata/oil_curve/{commodity}_wide.parquet    date × F1..F12
   macrodata/oil_curve/{commodity}_wide.csv
   macrodata/oil_curve/{commodity}_long.parquet    (date, commodity, tenor, price)
-  macrodata/oil_curve/{commodity}_metrics.parquet (date, commodity, slope_12_1, …)
+  macrodata/oil_curve/{commodity}_metrics.parquet (date, slope_12_1, …, commodity)
   macrodata/oil_curve/oil_curve_long.parquet      both commodities combined
 
 Usage
 -----
   python clean/oil_curve.py
-  python clean/oil_curve.py --no-brent      # skip if ds_brent_curve not pulled yet
+  python clean/oil_curve.py --no-brent      # WTI only
   python clean/oil_curve.py --no-csv
-  python clean/oil_curve.py --spot data/fred_wti_spot   # add basis column for WTI
+  python clean/oil_curve.py --spot fred_wti_spot   # spot dataset under --storage-root for WTI basis (default)
 """
 
 from __future__ import annotations
@@ -54,7 +55,7 @@ STORAGE_ROOT = "data"
 # Dataset name -> (commodity label, mnemonic root for auto-numbering)
 CURVE_DATASETS: dict[str, tuple[str, str]] = {
     "ds_wti_curve":   ("wti",   "NCLCS"),
-    "ds_brent_curve": ("brent", ""),       # root TBD pending verification
+    "ds_brent_curve": ("brent", ""),       # no legacy root: wrds_fut supplies 'nearby' (LLC contracts)
 }
 
 # WTI spot dataset (for basis computation); override with --spot
@@ -328,7 +329,7 @@ def main() -> None:
 
     if not all_long:
         print("\nNothing processed. Pull first:\n"
-              "  python wrdsdl.py pull ds_wti_curve")
+              "  python wrdsdl.py pull ds_wti_curve ds_brent_curve")
         return
 
     # Combined long file

@@ -3,8 +3,9 @@ Clean VIX term structure data.
 
 VIX sources (FRED, daily):
   data/vix/    CBOE VIX  (30-day)
+  data/vix3m/  CBOE VIX3M, formerly VXV (3-month)
+Also loaded if present, but disabled in config/datasets.yaml (FRED download broken):
   data/vix9d/  CBOE VXST (9-day)
-  data/vix3m/  CBOE VXV  (3-month)
   data/vix6m/  CBOE VXMT (6-month)
   data/vvix/   CBOE VVIX (vol-of-vol)
 
@@ -12,7 +13,7 @@ All series are annualised percentage points (e.g. 20 = 20% p.a.).
 
 Output
 ------
-  macrodata/vol/vol_daily.parquet    wide: (date, vix, vix9d, vix3m, vix6m, vvix)
+  macrodata/vol/vol_daily.parquet    wide: (date, vix, vix3m) — plus vix9d/vix6m/vvix if pulled
   macrodata/vol/vol_daily.csv
   macrodata/vol/vol_long.parquet     long: (date, series, value)
 
@@ -94,7 +95,7 @@ def main() -> None:
 
     if not frames:
         print("No data loaded. Pull VIX series first:\n"
-              "  python wrdsdl.py pull vix vix3m vix6m vvix")
+              "  python wrdsdl.py pull vix vix3m")
         return
 
     wide = frames[0]

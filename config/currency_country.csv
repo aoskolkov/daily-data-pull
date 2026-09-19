@@ -1,257 +1,257 @@
 iso3c,iso2c,wb_code,currency_code,valid_from,valid_to,country_name_en,wb_name,common_name
-0,AW,0,,,,Aruba,Aruba,Aruba
-2,AF,2,AFN,,,Afghanistan,Afghanistan,Afghanistan
-5,AO,5,AOA,,,Angola,Angola,Angola
-6,AL,6,ALL,,,Albania,Albania,Albania
-7,AD,7,EUR,,,Andorra,Andorra,Andorra
-9,AE,9,AED,,,United Arab Emirates,United Arab Emirates,United Arab Emirates
-10,AR,10,ARS,,,Argentina,Argentina,Argentina
-11,AM,11,AMD,,,Armenia,Armenia,Armenia
-12,AS,12,,,,American Samoa,American Samoa,American Samoa
-13,AG,13,XCD,,,Antigua and Barbuda,Antigua and Barbuda,Antigua and Barbuda
-14,AU,14,AUD,,,Australia,Australia,Australia
-15,AT,15,EUR,,,Austria,Austria,Austria
-15,AT,15,ATS,,1998-12-31,Austria,Austria,Austria
-16,AZ,16,AZN,,,Azerbaijan,Azerbaijan,Azerbaijan
-17,BI,17,BIF,,,Burundi,Burundi,Burundi
-20,BE,20,EUR,,,Belgium,Belgium,Belgium
-20,BE,20,BEF,,1998-12-31,Belgium,Belgium,Belgium
-21,BJ,21,XOF,,,Benin,Benin,Benin
-22,BF,22,XOF,,,Burkina Faso,Burkina Faso,Burkina Faso
-23,BD,23,BDT,,,Bangladesh,Bangladesh,Bangladesh
-24,BG,24,BGN,,,Bulgaria,Bulgaria,Bulgaria
-26,BH,26,BHD,,,Bahrain,Bahrain,Bahrain
-27,BS,27,BSD,,,"Bahamas, The","Bahamas, The","Bahamas, The"
-28,BA,28,BAM,,,Bosnia and Herzegovina,Bosnia and Herzegovina,Bosnia and Herzegovina
-30,BY,30,BYN,,,Belarus,Belarus,Belarus
-30,BY,30,BYR,,2016-06-30,Belarus,Belarus,Belarus
-31,BZ,31,BZD,,,Belize,Belize,Belize
-33,BM,33,BMD,,,Bermuda,Bermuda,Bermuda
-34,BO,34,BOB,,,Bolivia,Bolivia,Bolivia
-35,BR,35,BRL,,,Brazil,Brazil,Brazil
-36,BB,36,BBD,,,Barbados,Barbados,Barbados
-37,BN,37,BND,,,Brunei Darussalam,Brunei Darussalam,Brunei Darussalam
-39,BT,39,BTN,,,Bhutan,Bhutan,Bhutan
-40,BW,40,BWP,,,Botswana,Botswana,Botswana
-42,CF,42,XAF,,,Central African Republic,Central African Republic,Central African Republic
-43,CA,43,CAD,,,Canada,Canada,Canada
-47,CH,47,CHF,,,Switzerland,Switzerland,Switzerland
-48,JG,48,,,,Channel Islands,Channel Islands,Channel Islands
-49,CL,49,CLP,,,Chile,Chile,Chile
-50,CN,50,CNY,,,China,China,China
-51,CI,51,XOF,,,Cote d'Ivoire,Cote d'Ivoire,Ivory Coast
-54,CM,54,XAF,,,Cameroon,Cameroon,Cameroon
-55,CD,55,CDF,,,"Congo, Dem. Rep.","Congo, Dem. Rep.",DR Congo
-56,CG,56,XAF,,,"Congo, Rep.","Congo, Rep.",Congo
-57,CO,57,COP,,,Colombia,Colombia,Colombia
-58,KM,58,KMF,,,Comoros,Comoros,Comoros
-59,CV,59,CVE,,,Cabo Verde,Cabo Verde,Cabo Verde
-60,CR,60,CRC,,,Costa Rica,Costa Rica,Costa Rica
-63,CU,63,CUP,,,Cuba,Cuba,Cuba
-64,CW,64,,,,Curacao,Curacao,Curacao
-65,KY,65,KYD,,,Cayman Islands,Cayman Islands,Cayman Islands
-66,CY,66,EUR,,,Cyprus,Cyprus,Cyprus
-66,CY,66,CYP,,2007-12-31,Cyprus,Cyprus,Cyprus
-67,CZ,67,CZK,,,Czechia,Czechia,Czechia
-70,DE,70,EUR,,,Germany,Germany,Germany
-70,DE,70,DEM,,1998-12-31,Germany,Germany,Germany
-71,DJ,71,DJF,,,Djibouti,Djibouti,Djibouti
-73,DM,73,XCD,,,Dominica,Dominica,Dominica
-75,DK,75,DKK,,,Denmark,Denmark,Denmark
-77,DO,77,DOP,,,Dominican Republic,Dominican Republic,Dominican Republic
-81,DZ,81,DZD,,,Algeria,Algeria,Algeria
-87,EC,87,USD,,,Ecuador,Ecuador,Ecuador
-87,EC,87,ECS,,1999-09-09,Ecuador,Ecuador,Ecuador
-88,EG,88,EGP,,,"Egypt, Arab Rep.","Egypt, Arab Rep.","Egypt, Arab Rep."
-90,ER,90,ERN,,,Eritrea,Eritrea,Eritrea
-91,ES,91,EUR,,,Spain,Spain,Spain
-91,ES,91,ESP,,1998-12-31,Spain,Spain,Spain
-92,EE,92,EUR,,,Estonia,Estonia,Estonia
-92,EE,92,EEK,,2010-12-31,Estonia,Estonia,Estonia
-93,ET,93,ETB,,,Ethiopia,Ethiopia,Ethiopia
-96,FI,96,EUR,,,Finland,Finland,Finland
-96,FI,96,FIM,,1998-12-31,Finland,Finland,Finland
-97,FJ,97,FJD,,,Fiji,Fiji,Fiji
-98,FR,98,EUR,,,France,France,France
-98,FR,98,FRF,,1998-12-31,France,France,France
-99,FO,99,,,,Faroe Islands,Faroe Islands,Faroe Islands
-100,FM,100,USD,,,"Micronesia, Fed. Sts.","Micronesia, Fed. Sts.",Micronesia
-102,GA,102,XAF,,,Gabon,Gabon,Gabon
-103,GB,103,GBP,,,United Kingdom,United Kingdom,United Kingdom
-104,GE,104,GEL,,,Georgia,Georgia,Georgia
-105,GH,105,GHS,,,Ghana,Ghana,Ghana
-105,GH,105,GHC,,2007-06-30,Ghana,Ghana,Ghana
-106,GI,106,,,,Gibraltar,Gibraltar,Gibraltar
-107,GN,107,GNF,,,Guinea,Guinea,Guinea
-108,GM,108,GMD,,,"Gambia, The","Gambia, The","Gambia, The"
-109,GW,109,XOF,,,Guinea-Bissau,Guinea-Bissau,Guinea-Bissau
-110,GQ,110,XAF,,,Equatorial Guinea,Equatorial Guinea,Equatorial Guinea
-111,GR,111,EUR,,,Greece,Greece,Greece
-111,GR,111,GRD,,2000-12-31,Greece,Greece,Greece
-112,GD,112,XCD,,,Grenada,Grenada,Grenada
-113,GL,113,,,,Greenland,Greenland,Greenland
-114,GT,114,GTQ,,,Guatemala,Guatemala,Guatemala
-115,GU,115,,,,Guam,Guam,Guam
-116,GY,116,GYD,,,Guyana,Guyana,Guyana
-118,HK,118,HKD,,,"Hong Kong SAR, China","Hong Kong SAR, China",Hong Kong
-119,HN,119,HNL,,,Honduras,Honduras,Honduras
-121,HR,121,EUR,,,Croatia,Croatia,Croatia
-121,HR,121,HRK,,2022-12-31,Croatia,Croatia,Croatia
-122,HT,122,HTG,,,Haiti,Haiti,Haiti
-123,HU,123,HUF,,,Hungary,Hungary,Hungary
-129,ID,129,IDR,,,Indonesia,Indonesia,Indonesia
-131,IM,131,,,,Isle of Man,Isle of Man,Isle of Man
-132,IN,132,INR,,,India,India,India
-134,IE,134,EUR,,,Ireland,Ireland,Ireland
-134,IE,134,IEP,,1998-12-31,Ireland,Ireland,Ireland
-135,IR,135,IRR,,,"Iran, Islamic Rep.","Iran, Islamic Rep.",Iran
-136,IQ,136,IQD,,,Iraq,Iraq,Iraq
-137,IS,137,ISK,,,Iceland,Iceland,Iceland
-138,IL,138,ILS,,,Israel,Israel,Israel
-139,IT,139,EUR,,,Italy,Italy,Italy
-139,IT,139,ITL,,1998-12-31,Italy,Italy,Italy
-140,JM,140,JMD,,,Jamaica,Jamaica,Jamaica
-141,JO,141,JOD,,,Jordan,Jordan,Jordan
-142,JP,142,JPY,,,Japan,Japan,Japan
-143,KZ,143,KZT,,,Kazakhstan,Kazakhstan,Kazakhstan
-144,KE,144,KES,,,Kenya,Kenya,Kenya
-145,KG,145,KGS,,,Kyrgyz Republic,Kyrgyz Republic,Kyrgyzstan
-146,KH,146,,,,Cambodia,Cambodia,Cambodia
-147,KI,147,AUD,,,Kiribati,Kiribati,Kiribati
-148,KN,148,XCD,,,St. Kitts and Nevis,St. Kitts and Nevis,St. Kitts and Nevis
-149,KR,149,KRW,,,"Korea, Rep.","Korea, Rep.",South Korea
-150,KW,150,KWD,,,Kuwait,Kuwait,Kuwait
-152,LA,152,LAK,,,Lao PDR,Lao PDR,Laos
-153,LB,153,LBP,,,Lebanon,Lebanon,Lebanon
-154,LR,154,LRD,,,Liberia,Liberia,Liberia
-155,LY,155,LYD,,,Libya,Libya,Libya
-156,LC,156,XCD,,,St. Lucia,St. Lucia,St. Lucia
-160,LI,160,CHF,,,Liechtenstein,Liechtenstein,Liechtenstein
-161,LK,161,LKR,,,Sri Lanka,Sri Lanka,Sri Lanka
-164,LS,164,LSL,,,Lesotho,Lesotho,Lesotho
-166,LT,166,EUR,,,Lithuania,Lithuania,Lithuania
-166,LT,166,LTL,,2014-12-31,Lithuania,Lithuania,Lithuania
-167,LU,167,EUR,,,Luxembourg,Luxembourg,Luxembourg
-167,LU,167,LUF,,1998-12-31,Luxembourg,Luxembourg,Luxembourg
-168,LV,168,EUR,,,Latvia,Latvia,Latvia
-168,LV,168,LVL,,2013-12-31,Latvia,Latvia,Latvia
-169,MO,169,MOP,,,"Macao SAR, China","Macao SAR, China",Macao
-170,MF,170,,,,St. Martin (French part),St. Martin (French part),St. Martin (French part)
-171,MA,171,MAD,,,Morocco,Morocco,Morocco
-172,MC,172,EUR,,,Monaco,Monaco,Monaco
-173,MD,173,MDL,,,Moldova,Moldova,Moldova
-175,MG,175,MGA,,,Madagascar,Madagascar,Madagascar
-176,MV,176,MVR,,,Maldives,Maldives,Maldives
-178,MX,178,MXN,,,Mexico,Mexico,Mexico
-179,MH,179,USD,,,Marshall Islands,Marshall Islands,Marshall Islands
-181,MK,181,MKD,,,North Macedonia,North Macedonia,North Macedonia
-181,MK,181,YUM,,1992-12-31,North Macedonia,North Macedonia,North Macedonia
-182,ML,182,XOF,,,Mali,Mali,Mali
-183,MT,183,EUR,,,Malta,Malta,Malta
-183,MT,183,MTL,,2007-12-31,Malta,Malta,Malta
-184,MM,184,MMK,,,Myanmar,Myanmar,Myanmar
-186,ME,186,EUR,,,Montenegro,Montenegro,Montenegro
-186,ME,186,YUM,,2001-12-31,Montenegro,Montenegro,Montenegro
-187,MN,187,MNT,,,Mongolia,Mongolia,Mongolia
-188,MP,188,,,,Northern Mariana Islands,Northern Mariana Islands,Northern Mariana Islands
-189,MZ,189,MZN,,,Mozambique,Mozambique,Mozambique
-189,MZ,189,MZM,,2005-06-30,Mozambique,Mozambique,Mozambique
-190,MR,190,MRU,,,Mauritania,Mauritania,Mauritania
-190,MR,190,MRO,,2017-12-31,Mauritania,Mauritania,Mauritania
-191,MU,191,MUR,,,Mauritius,Mauritius,Mauritius
-192,MW,192,MWK,,,Malawi,Malawi,Malawi
-193,MY,193,MYR,,,Malaysia,Malaysia,Malaysia
-196,NA,196,NAD,,,Namibia,Namibia,Namibia
-197,NC,197,,,,New Caledonia,New Caledonia,New Caledonia
-198,NE,198,XOF,,,Niger,Niger,Niger
-199,NG,199,NGN,,,Nigeria,Nigeria,Nigeria
-200,NI,200,NIO,,,Nicaragua,Nicaragua,Nicaragua
-201,NL,201,EUR,,,Netherlands,Netherlands,Netherlands
-201,NL,201,NLG,,1998-12-31,Netherlands,Netherlands,Netherlands
-202,NO,202,NOK,,,Norway,Norway,Norway
-203,NP,203,NPR,,,Nepal,Nepal,Nepal
-205,NR,205,AUD,,,Nauru,Nauru,Nauru
-207,NZ,207,NZD,,,New Zealand,New Zealand,New Zealand
-209,OM,209,OMR,,,Oman,Oman,Oman
-211,PK,211,PKR,,,Pakistan,Pakistan,Pakistan
-212,PA,212,USD,,,Panama,Panama,Panama
-213,PE,213,PEN,,,Peru,Peru,Peru
-214,PH,214,PHP,,,Philippines,Philippines,Philippines
-215,PW,215,USD,,,Palau,Palau,Palau
-216,PG,216,PGK,,,Papua New Guinea,Papua New Guinea,Papua New Guinea
-217,PL,217,PLN,,,Poland,Poland,Poland
-219,PR,219,USD,,,Puerto Rico (US),Puerto Rico (US),Puerto Rico (US)
-220,KP,220,KPW,,,"Korea, Dem. People's Rep.","Korea, Dem. People's Rep.",North Korea
-221,PT,221,EUR,,,Portugal,Portugal,Portugal
-221,PT,221,PTE,,1998-12-31,Portugal,Portugal,Portugal
-222,PY,222,PYG,,,Paraguay,Paraguay,Paraguay
-223,PS,223,ILS,,,West Bank and Gaza,West Bank and Gaza,Palestine
-226,PF,226,,,,French Polynesia,French Polynesia,French Polynesia
-227,QA,227,QAR,,,Qatar,Qatar,Qatar
-228,RO,228,RON,,,Romania,Romania,Romania
-228,RO,228,ROL,,2004-12-31,Romania,Romania,Romania
-230,RU,230,RUB,,,Russian Federation,Russian Federation,Russia
-231,RW,231,RWF,,,Rwanda,Rwanda,Rwanda
-233,SA,233,SAR,,,Saudi Arabia,Saudi Arabia,Saudi Arabia
-234,SD,234,SDG,,,Sudan,Sudan,Sudan
-235,SN,235,XOF,,,Senegal,Senegal,Senegal
-236,SG,236,SGD,,,Singapore,Singapore,Singapore
-237,SB,237,SBD,,,Solomon Islands,Solomon Islands,Solomon Islands
-238,SL,238,SLL,,,Sierra Leone,Sierra Leone,Sierra Leone
-239,SV,239,USD,,,El Salvador,El Salvador,El Salvador
-239,SV,239,SVC,,2000-12-31,El Salvador,El Salvador,El Salvador
-240,SM,240,EUR,,,San Marino,San Marino,San Marino
-241,SO,241,SOS,,,"Somalia, Fed. Rep.","Somalia, Fed. Rep.","Somalia, Fed. Rep."
-242,RS,242,RSD,,,Serbia,Serbia,Serbia
-242,RS,242,YUM,,2002-12-31,Serbia,Serbia,Serbia
-244,SS,244,SSP,,,South Sudan,South Sudan,South Sudan
-247,ST,247,STN,,,Sao Tome and Principe,Sao Tome and Principe,Sao Tome & Principe
-248,SR,248,SRD,,,Suriname,Suriname,Suriname
-249,SK,249,EUR,,,Slovak Republic,Slovak Republic,Slovak Republic
-249,SK,249,SKK,,2008-12-31,Slovak Republic,Slovak Republic,Slovak Republic
-250,SI,250,EUR,,,Slovenia,Slovenia,Slovenia
-250,SI,250,SIT,,2006-12-31,Slovenia,Slovenia,Slovenia
-251,SE,251,SEK,,,Sweden,Sweden,Sweden
-252,SZ,252,SZL,,,Eswatini,Eswatini,Eswatini
-253,SX,253,,,,Sint Maarten (Dutch part),Sint Maarten (Dutch part),Sint Maarten (Dutch part)
-255,SC,255,,,,Seychelles,Seychelles,Seychelles
-256,SY,256,SYP,,,Syrian Arab Republic,Syrian Arab Republic,Syria
-257,TC,257,USD,,,Turks and Caicos Islands,Turks and Caicos Islands,Turks and Caicos Islands
-258,TD,258,XAF,,,Chad,Chad,Chad
-261,TG,261,XOF,,,Togo,Togo,Togo
-262,TH,262,THB,,,Thailand,Thailand,Thailand
-263,TJ,263,TJS,,,Tajikistan,Tajikistan,Tajikistan
-264,TM,264,TMT,,,Turkmenistan,Turkmenistan,Turkmenistan
-266,TL,266,USD,,,Timor-Leste,Timor-Leste,Timor-Leste
-268,TO,268,TOP,,,Tonga,Tonga,Tonga
-271,TT,271,TTD,,,Trinidad and Tobago,Trinidad and Tobago,Trinidad and Tobago
-272,TN,272,TND,,,Tunisia,Tunisia,Tunisia
-273,TR,273,TRY,,,Turkiye,Turkiye,Turkiye
-273,TR,273,TRL,,2004-12-31,Turkiye,Turkiye,Turkiye
-274,TV,274,AUD,,,Tuvalu,Tuvalu,Tuvalu
-275,TZ,275,TZS,,,Tanzania,Tanzania,Tanzania
-276,UG,276,UGX,,,Uganda,Uganda,Uganda
-277,UA,277,UAH,,,Ukraine,Ukraine,Ukraine
-279,UY,279,UYU,,,Uruguay,Uruguay,Uruguay
-280,US,280,USD,,,United States,United States,United States
-281,UZ,281,UZS,,,Uzbekistan,Uzbekistan,Uzbekistan
-282,VC,282,XCD,,,St. Vincent and the Grenadines,St. Vincent and the Grenadines,St. Vincent and the Grenadines
-283,VE,283,VES,,,"Venezuela, RB","Venezuela, RB",Venezuela
-283,VE,283,VEF,,2018-08-19,"Venezuela, RB","Venezuela, RB",Venezuela
-284,VG,284,USD,,,British Virgin Islands,British Virgin Islands,British Virgin Islands
-285,VI,285,USD,,,Virgin Islands (U.S.),Virgin Islands (U.S.),Virgin Islands (U.S.)
-286,VN,286,VND,,,Viet Nam,Viet Nam,Vietnam
-287,VU,287,VUV,,,Vanuatu,Vanuatu,Vanuatu
-289,WS,289,WST,,,Samoa,Samoa,Samoa
-290,XK,290,EUR,,,Kosovo,Kosovo,Kosovo
-292,YE,292,YER,,,"Yemen, Rep.","Yemen, Rep.","Yemen, Rep."
-293,ZA,293,ZAR,,,South Africa,South Africa,South Africa
-294,ZM,294,ZMW,,,Zambia,Zambia,Zambia
-294,ZM,294,ZMK,,2012-12-31,Zambia,Zambia,Zambia
-295,ZW,295,ZWL,,,Zimbabwe,Zimbabwe,Zimbabwe
-295,ZW,295,ZWL,,2008-12-31,Zimbabwe,Zimbabwe,Zimbabwe
-,AI,,XCD,,,,,
-,MS,,XCD,,,,,
-,VA,,EUR,,,,,
-,TW,,TWD,,,,,Taiwan
-,EH,,MAD,,,,,
+ABW,AW,ABW,,,,Aruba,Aruba,Aruba
+AFG,AF,AFG,AFN,,,Afghanistan,Afghanistan,Afghanistan
+AGO,AO,AGO,AOA,,,Angola,Angola,Angola
+AIA,AI,,XCD,,,,,
+ALB,AL,ALB,ALL,,,Albania,Albania,Albania
+AND,AD,AND,EUR,,,Andorra,Andorra,Andorra
+ARE,AE,ARE,AED,,,United Arab Emirates,United Arab Emirates,United Arab Emirates
+ARG,AR,ARG,ARS,,,Argentina,Argentina,Argentina
+ARM,AM,ARM,AMD,,,Armenia,Armenia,Armenia
+ASM,AS,ASM,,,,American Samoa,American Samoa,American Samoa
+ATG,AG,ATG,XCD,,,Antigua and Barbuda,Antigua and Barbuda,Antigua and Barbuda
+AUS,AU,AUS,AUD,,,Australia,Australia,Australia
+AUT,AT,AUT,EUR,,,Austria,Austria,Austria
+AUT,AT,AUT,ATS,,1998-12-31,Austria,Austria,Austria
+AZE,AZ,AZE,AZN,,,Azerbaijan,Azerbaijan,Azerbaijan
+BDI,BI,BDI,BIF,,,Burundi,Burundi,Burundi
+BEL,BE,BEL,EUR,,,Belgium,Belgium,Belgium
+BEL,BE,BEL,BEF,,1998-12-31,Belgium,Belgium,Belgium
+BEN,BJ,BEN,XOF,,,Benin,Benin,Benin
+BFA,BF,BFA,XOF,,,Burkina Faso,Burkina Faso,Burkina Faso
+BGD,BD,BGD,BDT,,,Bangladesh,Bangladesh,Bangladesh
+BGR,BG,BGR,BGN,,,Bulgaria,Bulgaria,Bulgaria
+BHR,BH,BHR,BHD,,,Bahrain,Bahrain,Bahrain
+BHS,BS,BHS,BSD,,,"Bahamas, The","Bahamas, The","Bahamas, The"
+BIH,BA,BIH,BAM,,,Bosnia and Herzegovina,Bosnia and Herzegovina,Bosnia and Herzegovina
+BLR,BY,BLR,BYN,,,Belarus,Belarus,Belarus
+BLR,BY,BLR,BYR,,2016-06-30,Belarus,Belarus,Belarus
+BLZ,BZ,BLZ,BZD,,,Belize,Belize,Belize
+BMU,BM,BMU,BMD,,,Bermuda,Bermuda,Bermuda
+BOL,BO,BOL,BOB,,,Bolivia,Bolivia,Bolivia
+BRA,BR,BRA,BRL,,,Brazil,Brazil,Brazil
+BRB,BB,BRB,BBD,,,Barbados,Barbados,Barbados
+BRN,BN,BRN,BND,,,Brunei Darussalam,Brunei Darussalam,Brunei Darussalam
+BTN,BT,BTN,BTN,,,Bhutan,Bhutan,Bhutan
+BWA,BW,BWA,BWP,,,Botswana,Botswana,Botswana
+CAF,CF,CAF,XAF,,,Central African Republic,Central African Republic,Central African Republic
+CAN,CA,CAN,CAD,,,Canada,Canada,Canada
+CHE,CH,CHE,CHF,,,Switzerland,Switzerland,Switzerland
+CHI,JG,CHI,,,,Channel Islands,Channel Islands,Channel Islands
+CHL,CL,CHL,CLP,,,Chile,Chile,Chile
+CHN,CN,CHN,CNY,,,China,China,China
+CIV,CI,CIV,XOF,,,Cote d'Ivoire,Cote d'Ivoire,Ivory Coast
+CMR,CM,CMR,XAF,,,Cameroon,Cameroon,Cameroon
+COD,CD,COD,CDF,,,"Congo, Dem. Rep.","Congo, Dem. Rep.",DR Congo
+COG,CG,COG,XAF,,,"Congo, Rep.","Congo, Rep.",Congo
+COL,CO,COL,COP,,,Colombia,Colombia,Colombia
+COM,KM,COM,KMF,,,Comoros,Comoros,Comoros
+CPV,CV,CPV,CVE,,,Cabo Verde,Cabo Verde,Cabo Verde
+CRI,CR,CRI,CRC,,,Costa Rica,Costa Rica,Costa Rica
+CUB,CU,CUB,CUP,,,Cuba,Cuba,Cuba
+CUW,CW,CUW,,,,Curacao,Curacao,Curacao
+CYM,KY,CYM,KYD,,,Cayman Islands,Cayman Islands,Cayman Islands
+CYP,CY,CYP,EUR,,,Cyprus,Cyprus,Cyprus
+CYP,CY,CYP,CYP,,2007-12-31,Cyprus,Cyprus,Cyprus
+CZE,CZ,CZE,CZK,,,Czechia,Czechia,Czechia
+DEU,DE,DEU,EUR,,,Germany,Germany,Germany
+DEU,DE,DEU,DEM,,1998-12-31,Germany,Germany,Germany
+DJI,DJ,DJI,DJF,,,Djibouti,Djibouti,Djibouti
+DMA,DM,DMA,XCD,,,Dominica,Dominica,Dominica
+DNK,DK,DNK,DKK,,,Denmark,Denmark,Denmark
+DOM,DO,DOM,DOP,,,Dominican Republic,Dominican Republic,Dominican Republic
+DZA,DZ,DZA,DZD,,,Algeria,Algeria,Algeria
+ECU,EC,ECU,USD,,,Ecuador,Ecuador,Ecuador
+ECU,EC,ECU,ECS,,1999-09-09,Ecuador,Ecuador,Ecuador
+EGY,EG,EGY,EGP,,,"Egypt, Arab Rep.","Egypt, Arab Rep.","Egypt, Arab Rep."
+ERI,ER,ERI,ERN,,,Eritrea,Eritrea,Eritrea
+ESH,EH,,MAD,,,,,
+ESP,ES,ESP,EUR,,,Spain,Spain,Spain
+ESP,ES,ESP,ESP,,1998-12-31,Spain,Spain,Spain
+EST,EE,EST,EUR,,,Estonia,Estonia,Estonia
+EST,EE,EST,EEK,,2010-12-31,Estonia,Estonia,Estonia
+ETH,ET,ETH,ETB,,,Ethiopia,Ethiopia,Ethiopia
+FIN,FI,FIN,EUR,,,Finland,Finland,Finland
+FIN,FI,FIN,FIM,,1998-12-31,Finland,Finland,Finland
+FJI,FJ,FJI,FJD,,,Fiji,Fiji,Fiji
+FRA,FR,FRA,EUR,,,France,France,France
+FRA,FR,FRA,FRF,,1998-12-31,France,France,France
+FRO,FO,FRO,,,,Faroe Islands,Faroe Islands,Faroe Islands
+FSM,FM,FSM,USD,,,"Micronesia, Fed. Sts.","Micronesia, Fed. Sts.",Micronesia
+GAB,GA,GAB,XAF,,,Gabon,Gabon,Gabon
+GBR,GB,GBR,GBP,,,United Kingdom,United Kingdom,United Kingdom
+GEO,GE,GEO,GEL,,,Georgia,Georgia,Georgia
+GHA,GH,GHA,GHS,,,Ghana,Ghana,Ghana
+GHA,GH,GHA,GHC,,2007-06-30,Ghana,Ghana,Ghana
+GIB,GI,GIB,,,,Gibraltar,Gibraltar,Gibraltar
+GIN,GN,GIN,GNF,,,Guinea,Guinea,Guinea
+GMB,GM,GMB,GMD,,,"Gambia, The","Gambia, The","Gambia, The"
+GNB,GW,GNB,XOF,,,Guinea-Bissau,Guinea-Bissau,Guinea-Bissau
+GNQ,GQ,GNQ,XAF,,,Equatorial Guinea,Equatorial Guinea,Equatorial Guinea
+GRC,GR,GRC,EUR,,,Greece,Greece,Greece
+GRC,GR,GRC,GRD,,2000-12-31,Greece,Greece,Greece
+GRD,GD,GRD,XCD,,,Grenada,Grenada,Grenada
+GRL,GL,GRL,,,,Greenland,Greenland,Greenland
+GTM,GT,GTM,GTQ,,,Guatemala,Guatemala,Guatemala
+GUM,GU,GUM,,,,Guam,Guam,Guam
+GUY,GY,GUY,GYD,,,Guyana,Guyana,Guyana
+HKG,HK,HKG,HKD,,,"Hong Kong SAR, China","Hong Kong SAR, China",Hong Kong
+HND,HN,HND,HNL,,,Honduras,Honduras,Honduras
+HRV,HR,HRV,EUR,,,Croatia,Croatia,Croatia
+HRV,HR,HRV,HRK,,2022-12-31,Croatia,Croatia,Croatia
+HTI,HT,HTI,HTG,,,Haiti,Haiti,Haiti
+HUN,HU,HUN,HUF,,,Hungary,Hungary,Hungary
+IDN,ID,IDN,IDR,,,Indonesia,Indonesia,Indonesia
+IMN,IM,IMN,,,,Isle of Man,Isle of Man,Isle of Man
+IND,IN,IND,INR,,,India,India,India
+IRL,IE,IRL,EUR,,,Ireland,Ireland,Ireland
+IRL,IE,IRL,IEP,,1998-12-31,Ireland,Ireland,Ireland
+IRN,IR,IRN,IRR,,,"Iran, Islamic Rep.","Iran, Islamic Rep.",Iran
+IRQ,IQ,IRQ,IQD,,,Iraq,Iraq,Iraq
+ISL,IS,ISL,ISK,,,Iceland,Iceland,Iceland
+ISR,IL,ISR,ILS,,,Israel,Israel,Israel
+ITA,IT,ITA,EUR,,,Italy,Italy,Italy
+ITA,IT,ITA,ITL,,1998-12-31,Italy,Italy,Italy
+JAM,JM,JAM,JMD,,,Jamaica,Jamaica,Jamaica
+JOR,JO,JOR,JOD,,,Jordan,Jordan,Jordan
+JPN,JP,JPN,JPY,,,Japan,Japan,Japan
+KAZ,KZ,KAZ,KZT,,,Kazakhstan,Kazakhstan,Kazakhstan
+KEN,KE,KEN,KES,,,Kenya,Kenya,Kenya
+KGZ,KG,KGZ,KGS,,,Kyrgyz Republic,Kyrgyz Republic,Kyrgyzstan
+KHM,KH,KHM,,,,Cambodia,Cambodia,Cambodia
+KIR,KI,KIR,AUD,,,Kiribati,Kiribati,Kiribati
+KNA,KN,KNA,XCD,,,St. Kitts and Nevis,St. Kitts and Nevis,St. Kitts and Nevis
+KOR,KR,KOR,KRW,,,"Korea, Rep.","Korea, Rep.",South Korea
+KWT,KW,KWT,KWD,,,Kuwait,Kuwait,Kuwait
+LAO,LA,LAO,LAK,,,Lao PDR,Lao PDR,Laos
+LBN,LB,LBN,LBP,,,Lebanon,Lebanon,Lebanon
+LBR,LR,LBR,LRD,,,Liberia,Liberia,Liberia
+LBY,LY,LBY,LYD,,,Libya,Libya,Libya
+LCA,LC,LCA,XCD,,,St. Lucia,St. Lucia,St. Lucia
+LIE,LI,LIE,CHF,,,Liechtenstein,Liechtenstein,Liechtenstein
+LKA,LK,LKA,LKR,,,Sri Lanka,Sri Lanka,Sri Lanka
+LSO,LS,LSO,LSL,,,Lesotho,Lesotho,Lesotho
+LTU,LT,LTU,EUR,,,Lithuania,Lithuania,Lithuania
+LTU,LT,LTU,LTL,,2014-12-31,Lithuania,Lithuania,Lithuania
+LUX,LU,LUX,EUR,,,Luxembourg,Luxembourg,Luxembourg
+LUX,LU,LUX,LUF,,1998-12-31,Luxembourg,Luxembourg,Luxembourg
+LVA,LV,LVA,EUR,,,Latvia,Latvia,Latvia
+LVA,LV,LVA,LVL,,2013-12-31,Latvia,Latvia,Latvia
+MAC,MO,MAC,MOP,,,"Macao SAR, China","Macao SAR, China",Macao
+MAF,MF,MAF,,,,St. Martin (French part),St. Martin (French part),St. Martin (French part)
+MAR,MA,MAR,MAD,,,Morocco,Morocco,Morocco
+MCO,MC,MCO,EUR,,,Monaco,Monaco,Monaco
+MDA,MD,MDA,MDL,,,Moldova,Moldova,Moldova
+MDG,MG,MDG,MGA,,,Madagascar,Madagascar,Madagascar
+MDV,MV,MDV,MVR,,,Maldives,Maldives,Maldives
+MEX,MX,MEX,MXN,,,Mexico,Mexico,Mexico
+MHL,MH,MHL,USD,,,Marshall Islands,Marshall Islands,Marshall Islands
+MKD,MK,MKD,MKD,,,North Macedonia,North Macedonia,North Macedonia
+MKD,MK,MKD,YUM,,1992-12-31,North Macedonia,North Macedonia,North Macedonia
+MLI,ML,MLI,XOF,,,Mali,Mali,Mali
+MLT,MT,MLT,EUR,,,Malta,Malta,Malta
+MLT,MT,MLT,MTL,,2007-12-31,Malta,Malta,Malta
+MMR,MM,MMR,MMK,,,Myanmar,Myanmar,Myanmar
+MNE,ME,MNE,EUR,,,Montenegro,Montenegro,Montenegro
+MNE,ME,MNE,YUM,,2001-12-31,Montenegro,Montenegro,Montenegro
+MNG,MN,MNG,MNT,,,Mongolia,Mongolia,Mongolia
+MNP,MP,MNP,,,,Northern Mariana Islands,Northern Mariana Islands,Northern Mariana Islands
+MOZ,MZ,MOZ,MZN,,,Mozambique,Mozambique,Mozambique
+MOZ,MZ,MOZ,MZM,,2005-06-30,Mozambique,Mozambique,Mozambique
+MRT,MR,MRT,MRU,,,Mauritania,Mauritania,Mauritania
+MRT,MR,MRT,MRO,,2017-12-31,Mauritania,Mauritania,Mauritania
+MSR,MS,,XCD,,,,,
+MUS,MU,MUS,MUR,,,Mauritius,Mauritius,Mauritius
+MWI,MW,MWI,MWK,,,Malawi,Malawi,Malawi
+MYS,MY,MYS,MYR,,,Malaysia,Malaysia,Malaysia
+NAM,NA,NAM,NAD,,,Namibia,Namibia,Namibia
+NCL,NC,NCL,,,,New Caledonia,New Caledonia,New Caledonia
+NER,NE,NER,XOF,,,Niger,Niger,Niger
+NGA,NG,NGA,NGN,,,Nigeria,Nigeria,Nigeria
+NIC,NI,NIC,NIO,,,Nicaragua,Nicaragua,Nicaragua
+NLD,NL,NLD,EUR,,,Netherlands,Netherlands,Netherlands
+NLD,NL,NLD,NLG,,1998-12-31,Netherlands,Netherlands,Netherlands
+NOR,NO,NOR,NOK,,,Norway,Norway,Norway
+NPL,NP,NPL,NPR,,,Nepal,Nepal,Nepal
+NRU,NR,NRU,AUD,,,Naoero,Naoero,Naoero
+NZL,NZ,NZL,NZD,,,New Zealand,New Zealand,New Zealand
+OMN,OM,OMN,OMR,,,Oman,Oman,Oman
+PAK,PK,PAK,PKR,,,Pakistan,Pakistan,Pakistan
+PAN,PA,PAN,USD,,,Panama,Panama,Panama
+PER,PE,PER,PEN,,,Peru,Peru,Peru
+PHL,PH,PHL,PHP,,,Philippines,Philippines,Philippines
+PLW,PW,PLW,USD,,,Palau,Palau,Palau
+PNG,PG,PNG,PGK,,,Papua New Guinea,Papua New Guinea,Papua New Guinea
+POL,PL,POL,PLN,,,Poland,Poland,Poland
+PRI,PR,PRI,USD,,,Puerto Rico (US),Puerto Rico (US),Puerto Rico (US)
+PRK,KP,PRK,KPW,,,"Korea, Dem. People's Rep.","Korea, Dem. People's Rep.",North Korea
+PRT,PT,PRT,EUR,,,Portugal,Portugal,Portugal
+PRT,PT,PRT,PTE,,1998-12-31,Portugal,Portugal,Portugal
+PRY,PY,PRY,PYG,,,Paraguay,Paraguay,Paraguay
+PSE,PS,PSE,ILS,,,West Bank and Gaza,West Bank and Gaza,Palestine
+PYF,PF,PYF,,,,French Polynesia,French Polynesia,French Polynesia
+QAT,QA,QAT,QAR,,,Qatar,Qatar,Qatar
+ROU,RO,ROU,RON,,,Romania,Romania,Romania
+ROU,RO,ROU,ROL,,2004-12-31,Romania,Romania,Romania
+RUS,RU,RUS,RUB,,,Russian Federation,Russian Federation,Russia
+RWA,RW,RWA,RWF,,,Rwanda,Rwanda,Rwanda
+SAU,SA,SAU,SAR,,,Saudi Arabia,Saudi Arabia,Saudi Arabia
+SDN,SD,SDN,SDG,,,Sudan,Sudan,Sudan
+SEN,SN,SEN,XOF,,,Senegal,Senegal,Senegal
+SGP,SG,SGP,SGD,,,Singapore,Singapore,Singapore
+SLB,SB,SLB,SBD,,,Solomon Islands,Solomon Islands,Solomon Islands
+SLE,SL,SLE,SLL,,,Sierra Leone,Sierra Leone,Sierra Leone
+SLV,SV,SLV,USD,,,El Salvador,El Salvador,El Salvador
+SLV,SV,SLV,SVC,,2000-12-31,El Salvador,El Salvador,El Salvador
+SMR,SM,SMR,EUR,,,San Marino,San Marino,San Marino
+SOM,SO,SOM,SOS,,,"Somalia, Fed. Rep.","Somalia, Fed. Rep.","Somalia, Fed. Rep."
+SRB,RS,SRB,RSD,,,Serbia,Serbia,Serbia
+SRB,RS,SRB,YUM,,2002-12-31,Serbia,Serbia,Serbia
+SSD,SS,SSD,SSP,,,South Sudan,South Sudan,South Sudan
+STP,ST,STP,STN,,,Sao Tome and Principe,Sao Tome and Principe,Sao Tome & Principe
+SUR,SR,SUR,SRD,,,Suriname,Suriname,Suriname
+SVK,SK,SVK,EUR,,,Slovak Republic,Slovak Republic,Slovak Republic
+SVK,SK,SVK,SKK,,2008-12-31,Slovak Republic,Slovak Republic,Slovak Republic
+SVN,SI,SVN,EUR,,,Slovenia,Slovenia,Slovenia
+SVN,SI,SVN,SIT,,2006-12-31,Slovenia,Slovenia,Slovenia
+SWE,SE,SWE,SEK,,,Sweden,Sweden,Sweden
+SWZ,SZ,SWZ,SZL,,,Eswatini,Eswatini,Eswatini
+SXM,SX,SXM,,,,Sint Maarten (Dutch part),Sint Maarten (Dutch part),Sint Maarten (Dutch part)
+SYC,SC,SYC,,,,Seychelles,Seychelles,Seychelles
+SYR,SY,SYR,SYP,,,Syrian Arab Republic,Syrian Arab Republic,Syria
+TCA,TC,TCA,USD,,,Turks and Caicos Islands,Turks and Caicos Islands,Turks and Caicos Islands
+TCD,TD,TCD,XAF,,,Chad,Chad,Chad
+TGO,TG,TGO,XOF,,,Togo,Togo,Togo
+THA,TH,THA,THB,,,Thailand,Thailand,Thailand
+TJK,TJ,TJK,TJS,,,Tajikistan,Tajikistan,Tajikistan
+TKM,TM,TKM,TMT,,,Turkmenistan,Turkmenistan,Turkmenistan
+TLS,TL,TLS,USD,,,Timor-Leste,Timor-Leste,Timor-Leste
+TON,TO,TON,TOP,,,Tonga,Tonga,Tonga
+TTO,TT,TTO,TTD,,,Trinidad and Tobago,Trinidad and Tobago,Trinidad and Tobago
+TUN,TN,TUN,TND,,,Tunisia,Tunisia,Tunisia
+TUR,TR,TUR,TRY,,,Turkiye,Turkiye,Turkiye
+TUR,TR,TUR,TRL,,2004-12-31,Turkiye,Turkiye,Turkiye
+TUV,TV,TUV,AUD,,,Tuvalu,Tuvalu,Tuvalu
+TWN,TW,,TWD,,,,,Taiwan
+TZA,TZ,TZA,TZS,,,Tanzania,Tanzania,Tanzania
+UGA,UG,UGA,UGX,,,Uganda,Uganda,Uganda
+UKR,UA,UKR,UAH,,,Ukraine,Ukraine,Ukraine
+URY,UY,URY,UYU,,,Uruguay,Uruguay,Uruguay
+USA,US,USA,USD,,,United States,United States,United States
+UZB,UZ,UZB,UZS,,,Uzbekistan,Uzbekistan,Uzbekistan
+VAT,VA,,EUR,,,,,
+VCT,VC,VCT,XCD,,,St. Vincent and the Grenadines,St. Vincent and the Grenadines,St. Vincent and the Grenadines
+VEN,VE,VEN,VES,,,"Venezuela, RB","Venezuela, RB",Venezuela
+VEN,VE,VEN,VEF,,2018-08-19,"Venezuela, RB","Venezuela, RB",Venezuela
+VGB,VG,VGB,USD,,,British Virgin Islands,British Virgin Islands,British Virgin Islands
+VIR,VI,VIR,USD,,,Virgin Islands (U.S.),Virgin Islands (U.S.),Virgin Islands (U.S.)
+VNM,VN,VNM,VND,,,Viet Nam,Viet Nam,Vietnam
+VUT,VU,VUT,VUV,,,Vanuatu,Vanuatu,Vanuatu
+WSM,WS,WSM,WST,,,Samoa,Samoa,Samoa
+XKX,XK,XKX,EUR,,,Kosovo,Kosovo,Kosovo
+YEM,YE,YEM,YER,,,"Yemen, Rep.","Yemen, Rep.","Yemen, Rep."
+ZAF,ZA,ZAF,ZAR,,,South Africa,South Africa,South Africa
+ZMB,ZM,ZMB,ZMW,,,Zambia,Zambia,Zambia
+ZMB,ZM,ZMB,ZMK,,2012-12-31,Zambia,Zambia,Zambia
+ZWE,ZW,ZWE,ZWL,,,Zimbabwe,Zimbabwe,Zimbabwe
+ZWE,ZW,ZWE,ZWL,,2008-12-31,Zimbabwe,Zimbabwe,Zimbabwe

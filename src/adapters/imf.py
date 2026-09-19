@@ -35,7 +35,8 @@ Config keys (datasets.yaml)
   start: "1980"
 
 Output: date, country, indicator (label, or raw code without labels), value,
-plus every other dimension as a lower-case column, e.g. counterpart_country.
+plus every other dimension as a lower-case column, e.g. counterpart_country,
+and indicator_code (raw code, when labels are used), freq and source.
 
 Discovery:  python wrdsdl.py discover imf --dataset BOP
 """

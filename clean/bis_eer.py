@@ -2,7 +2,7 @@
 Clean BIS effective exchange rate data → macrodata/bis_eer/.
 
 Reads:  data/bis_eer_real/     (REER, broad basket, 64 countries, monthly 1994–)
-        data/bis_eer_nominal/  (NEER, narrow basket, 27 countries, monthly 1964–)
+        data/bis_eer_nominal/  (NEER, narrow basket, 26 countries, monthly 1964–)
 Writes: macrodata/bis_eer/reer_wide.{parquet,csv}   — real EER (ISO2 columns)
         macrodata/bis_eer/neer_wide.{parquet,csv}   — nominal EER (ISO2 columns)
 """

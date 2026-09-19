@@ -2,9 +2,10 @@
 Clean IMF BOP (flows) and IIP (stocks) data.
 
 Produces:
-  - Per-indicator wide files: year × country
-  - A combined long panel: (year, iso2c, indicator, value)
-  - A combined wide panel: (year, iso2c, <indicator columns>)
+  - Per-indicator wide files: year × country (ISO3)
+  - A combined long panel: (year, iso3c, indicator, value, dataset)
+  - A combined wide panel: (year, iso3c, dataset, <indicator columns>)
+  Values are USD (not millions); dataset = bop_flow (BOP) or iip_stock (IIP).
 
 The five financial-account components (BPM6 sign convention):
   FDI           — direct investment

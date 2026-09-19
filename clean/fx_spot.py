@@ -13,13 +13,13 @@ Both toUSD and fromUSD quote directions are handled via cross-rate through USD:
 This is the same logic as the original download_fx.py, but operating on
 already-downloaded Parquet rather than querying WRDS directly.
 
-Usage
------
 Output
 ------
   macrodata/fx_spot/fx_spot_currency_wide.parquet   date × currency code
   macrodata/fx_spot/fx_spot_country_wide.parquet    date × iso3c  (via crosswalk)
-  macrodata/fx_spot/fx_spot_long.parquet            (date, currency, rate)
+  macrodata/fx_spot/fx_spot_long.parquet            (date, currency, exratd)
+All rates, majors included, are local currency per 1 USD (the inverse of
+clean/fx_forward.py, which reports USD per unit of currency).
 
 Usage
 -----

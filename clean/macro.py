@@ -4,7 +4,7 @@ Clean macro data from World Bank raw downloads.
 Produces two outputs per indicator (wide country × year) plus a combined
 country-year panel with all available indicators as columns.
 
-Sources (all World Bank, annual, ~180 countries)
+Sources (all World Bank, annual, ~180–215 countries per indicator)
 -------
   data/wb_gdp_usd/          GDP current USD
   data/wb_gdp_growth/       GDP growth rate (%)
@@ -21,9 +21,9 @@ Sources (all World Bank, annual, ~180 countries)
 
 Outputs
 -------
-  macrodata/macro/wide/wb_gdp_usd.csv          one file per indicator (year × iso3c)
-  macrodata/macro/panel/macro_panel.parquet    long panel (year, iso3c, country_name, var, value)
-  macrodata/macro/panel/macro_panel_wide.csv   wide panel (year, iso3c, country_name, gdp_usd, ...)
+  macrodata/macro/wide/<dataset>.{parquet,csv}         one file per indicator (date × iso3c), e.g. wb_gdp_usd
+  macrodata/macro/panel/macro_panel.parquet            long panel (year, iso3c, iso2c, country_name, value, variable)
+  macrodata/macro/panel/macro_panel_wide.{parquet,csv} wide panel (year, iso3c, iso2c, country_name, gdp_usd, ...)
 
 Usage
 -----
@@ -147,7 +147,7 @@ def main() -> None:
         return
 
     # ── Combined panel ────────────────────────────────────────────────────────
-    # Long panel: year, iso3c, country_name, variable, value
+    # Long panel: year, iso3c, iso2c, country_name, value, variable
     print("\nBuilding combined panel...")
     long_frames: list[pd.DataFrame] = []
     for short_name, df in loaded.items():

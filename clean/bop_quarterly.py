@@ -9,17 +9,18 @@ Series:
   goods_balance_wide.parquet    -- goods balance (trade balance)
   capital_account_wide.parquet  -- capital account
   financial_account_wide.parquet
-  fdi_assets_wide.parquet       -- FDI assets (outflows, sign: negative = outflow)
+  fdi_assets_wide.parquet       -- FDI assets (outflows; BPM6 sign: positive = net acquisition = outflow)
   fdi_liabs_wide.parquet        -- FDI liabilities (inflows)
   portfolio_assets_wide.parquet
   portfolio_liabs_wide.parquet
   other_inv_assets_wide.parquet
   other_inv_liabs_wide.parquet
   reserve_assets_wide.parquet
-  bop_meta.csv                  -- mnemonic -> country, series, units
+  bop_meta.csv                  -- mnemonic -> prefix, suffix, country, series
 
-Units vary by country (typically USD millions, some in local currency).
-Check bop_meta.csv for per-series unit codes from wrds_ecoinfo.
+Units are not stored: the raw pull carries only date_, dsmnemonic, close_.
+Typically USD millions (e.g. US current account 2024-Q1 = -238,622); per-series units
+(unitcodedesc) are in tr_ds_econ.wrds_ecoinfo.
 """
 
 import sys
@@ -60,7 +61,7 @@ PREFIX_TO_COUNTRY = {
     "CZ": "Czech Republic",  "DK": "Denmark",        "ED": "Ecuador",
     "EL": "El Salvador",     "EO": "Estonia",        "ES": "Spain",
     "ET": "Ethiopia",        "EY": "Egypt",          "FJ": "Fiji",
-    "FN": "Finland",         "FR": "France",         "GE": "French Guiana",
+    "FN": "Finland",         "FR": "France",         "GE": "Guinea",
     "GG": "Georgia",         "GM": "Gambia",         "GR": "Greece",
     "GW": "Guatemala",       "HA": "Haiti",          "HK": "Hong Kong",
     "HN": "Hungary",         "HO": "Honduras",       "IC": "Iceland",

@@ -14,30 +14,34 @@ Config keys (datasets.yaml)
   source:    imf_weo
   year:      2024          # WEO edition year
   edition:   2             # 1=April, 2=October
-  subjects:  [GGREV, GGXCNL, GGXWDG]   # WEO subject codes; empty = all
-  start:     "1980"        # drop projections and very old data before this year
+  subjects:  [GGR_NGDP, GGXCNL_NGDP, GGXWDG_NGDP]   # WEO subject codes; empty = all
+  start:     "1980"        # drop data before this year (projections are kept)
   incremental_key: date
 
-Selected WEO subject codes
----------------------------
-  NGDPD       GDP, current USD (billions)
-  NGDP_R      GDP, constant prices (index)
-  NGDP_RPCH   GDP growth rate (%)
-  PCPIPCH     Inflation rate, CPI (%)
-  LUR         Unemployment rate (%)
-  BCA         Current account balance (USD billions)
-  BCA_NGDPD   Current account balance (% GDP)
-  GGREV       General govt revenue (% GDP)
-  GGEXP       General govt total expenditure (% GDP)
-  GGXCNL      General govt net lending/borrowing (% GDP)  ← fiscal balance
-  GGPB        General govt primary balance (% GDP)
-  GGXWDG      General govt gross debt (% GDP)
-  GGXWDN      General govt net debt (% GDP)
-  GGR_NGDP    General govt revenue (% GDP)  [alternative code]
+Selected WEO subject codes (as in the Oct 2024 file)
+-----------------------------------------------------
+  NGDPD         GDP, current USD (billions)
+  NGDP_R        GDP, constant prices (national currency, billions)
+  NGDP_RPCH     GDP growth rate (%)
+  PCPIPCH       Inflation rate, CPI (%)
+  LUR           Unemployment rate (%)
+  BCA           Current account balance (USD billions)
+  BCA_NGDPD     Current account balance (% GDP)
+  GGR_NGDP      General govt revenue (% GDP)
+  GGX_NGDP      General govt total expenditure (% GDP)
+  GGXCNL_NGDP   General govt net lending/borrowing (% GDP)  ← fiscal balance
+  GGXONLB_NGDP  General govt primary net lending/borrowing (% GDP)
+  GGXWDG_NGDP   General govt gross debt (% GDP)
+  GGXWDN_NGDP   General govt net debt (% GDP)
+  GGR, GGX, GGXCNL, GGXONLB, GGXWDG, GGXWDN
+                Same concepts in levels: national currency, billions
+  Older editions used GGREV / GGEXP / GGPB; those codes are absent from the
+  Oct 2024 file and return no rows.
 
 Output columns
 --------------
-  date, iso3c, country, subject_code, subject_descriptor, units, value
+  date, country, subject_code, subject_descriptor, units, value
+  (no ISO code: the file's "ISO" column is not picked up by the rename below)
 """
 
 from __future__ import annotations

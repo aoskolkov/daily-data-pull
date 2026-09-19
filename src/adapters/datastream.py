@@ -3,7 +3,8 @@ Adapter for Datastream series via WRDS tr_ds_* libraries.
 
 Caveats baked in:
 - WRDS carries only select Datastream modules (equities, economics, commodities, futures).
-- Updates are monthly batch — not for live/intraday use.
+- Daily series arrive with a lag of a few days (2-3 days in 2026 pulls) — not for
+  live/intraday use.
 - Mnemonic coverage differs from the Datastream terminal:
     - Equities/indices: tr_ds_equities (wrds_ds2dsf, code column)
     - Commodity spots: tr_ds_comds (wrds_cmdy_info + wrds_cmdy_data, dsmnemonic column)
@@ -42,8 +43,9 @@ def _pull_commodity(conn: wrds.Connection, mnemonic: str, start: str, watermark)
         if watermark is not None
         else f"AND d.date_ >= '{start}'"
     )
+    # DISTINCT: wrds_cmdy_data repeats identical rows (4 per day for gold as of 2026-09).
     sql = f"""
-        SELECT i.dsmnemonic AS mnemonic, d.date_, d.close_, d.dsp, d.comcode
+        SELECT DISTINCT i.dsmnemonic AS mnemonic, d.date_, d.close_, d.dsp, d.comcode
         FROM tr_ds_comds.wrds_cmdy_info i
         JOIN tr_ds_comds.wrds_cmdy_data d ON i.comcode = d.comcode
         WHERE UPPER(i.dsmnemonic) = UPPER('{mnemonic}')
@@ -148,8 +150,8 @@ def pull(conn: wrds.Connection, config: dict, watermark=None) -> pd.DataFrame:
       mnemonic: CRUDOIL          -- single series
       mnemonics: [CRUDOIL, ...]  -- multiple series, returned stacked long
 
-    If 'mnemonics' key is present but the list is empty (e.g. Brent curve
-    before mnemonics are verified), the pull is skipped with a warning.
+    If 'mnemonics' key is present but the list is empty (e.g. mnemonics not yet
+    verified), the pull is skipped with a warning.
 
     Lookup order: tr_ds_comds (commodity spots) -> tr_ds_fut (continuous futures)
                   -> tr_ds_equities (equities/indices).

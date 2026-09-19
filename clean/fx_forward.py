@@ -1,16 +1,20 @@
-﻿"""
+"""
 Clean FX forward (and spot) rates from raw WRDS Datastream data.
 
 Raw source: data/fx_forward (from wrds_fx adapter)
 Columns: fromcurrcode, tocurrcode, ratetypecode, exratedesc, exratedate, midrate, bidrate, offerrate
 
-Direction in raw data:
-  - CCY→USD pairs (e.g. JPY/USD): fromcurrcode=JPY, tocurrcode=USD, midrate≈0.007
-  - USD→CCY pairs (e.g. USD/EUR): fromcurrcode=USD, tocurrcode=EUR, midrate≈0.92
+Raw quoting: midrate = units of fromcurrcode per 1 unit of tocurrcode, or per
+100/1000 units when exratedesc says so (e.g. "US $ TO 100 JAPANESE YEN"):
+  - fromcurrcode=JPY, tocurrcode=USD ("JPY TO USD"):  midrate ≈ 155    (JPY per USD)
+  - fromcurrcode=USD, tocurrcode=EUR ("USD TO EUR"):  midrate ≈ 1.154  (USD per EUR)
+  - fromcurrcode=USD, tocurrcode=JPY ("US $ TO 100 JAPANESE YEN"): ≈ 0.645 (USD per 100 JPY)
 
-Output convention: units of local currency per 1 USD
-  - CCY→USD: rate = 1 / midrate   (e.g. 1/0.007 ≈ 143 JPY/USD)
-  - USD→CCY: rate = midrate        (e.g. 0.92 EUR/USD)
+Output convention: USD per 1 unit of the currency (EUR ≈ 1.15, JPY ≈ 0.0064).
+Note this is the inverse of clean/fx_spot.py, which reports local currency per USD.
+  - CCY→USD: rate = 1 / midrate
+  - USD→CCY: rate = midrate / multiplier   (multiplier = 100 or 1000 if quoted per 100/1000)
+Both directions exist for the majors and agree once scaled.
 
 Output
 ------
@@ -75,11 +79,12 @@ def load_raw(input_dir: str) -> pd.DataFrame:
 
 def normalize(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Convert raw Datastream FX rates to a uniform 'local currency per 1 USD' long table.
+    Convert raw Datastream FX rates to a uniform 'USD per 1 unit of currency' long table.
 
-    The raw data has two quoting directions:
-      - tocurrcode == 'USD': rate is USD-per-CCY  → invert to get CCY-per-USD
-      - fromcurrcode == 'USD': rate is CCY-per-USD → keep as-is
+    midrate is fromcurrcode per unit of tocurrcode (per 100/1000 units for pairs whose
+    exratedesc reads "TO 100 ..." / "TO 1000 ..."), so:
+      - tocurrcode == 'USD':   CCY per USD → invert
+      - fromcurrcode == 'USD': USD per CCY → keep, after dividing by the multiplier
 
     Returns columns: date, currency, tenor, rate
     """
@@ -87,6 +92,10 @@ def normalize(df: pd.DataFrame) -> pd.DataFrame:
     df["exratedate"] = pd.to_datetime(df["exratedate"], errors="coerce")
     df = df.dropna(subset=["exratedate", "midrate"])
     df = df[df["midrate"] > 0]
+    # "US $ TO 100 JAPANESE YEN" etc. are quoted per 100 (or 1000) units of tocurrcode;
+    # unscaled they put JPY 100x off in 1986-89 and COP/INR/HUF/ISK/IDR likewise.
+    mult = df["exratedesc"].astype(str).str.extract(r"\bTO (\d+) ", expand=False).astype(float).fillna(1.0)
+    df["midrate"] = df["midrate"] / mult
 
     usd_to_ccy = df[df["fromcurrcode"] == "USD"].copy()
     usd_to_ccy["currency"] = usd_to_ccy["tocurrcode"]

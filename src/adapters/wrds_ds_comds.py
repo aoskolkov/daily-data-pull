@@ -7,7 +7,8 @@ Schema
 wrds_cmdy_info : metadata
   comcode, dsmnemonic, name, comdesc, unitdesc, isocur, seriestype (S=spot, I=index)
 
-wrds_cmdy_data : daily prices
+wrds_cmdy_data : prices (mostly daily; some series weekly, e.g. EIAHONY, or
+                 monthly in early years, e.g. OILBREN before 1982)
   comcode, date_, close_, dsp
 
 Config keys (datasets.yaml)
@@ -49,8 +50,9 @@ def pull(conn: wrds.Connection, config: dict, watermark=None) -> pd.DataFrame:
         mnem_list = ", ".join(f"'{m.upper()}'" for m in mnemonics)
         mnem_filter = f"AND i.dsmnemonic IN ({mnem_list})"
 
+    # DISTINCT: wrds_cmdy_data repeats identical rows (4 per day for gold as of 2026-09).
     sql = f"""
-        SELECT
+        SELECT DISTINCT
             d.date_,
             i.dsmnemonic,
             i.name,
