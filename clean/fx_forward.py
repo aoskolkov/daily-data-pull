@@ -19,6 +19,7 @@ Both directions exist for the majors and agree once scaled.
 Output
 ------
   macrodata/fx_forward/fx_forward_long.parquet         (date, currency, tenor, rate)
+  macrodata/fx_forward/fx_forward_meta.csv             (tenor, coverage, units)
   macrodata/fx_forward/by_tenor/{tenor}_wide.parquet   date × currency (one file per tenor)
   macrodata/fx_forward/by_tenor/{tenor}_wide.csv
 
@@ -151,7 +152,7 @@ def main() -> None:
     else:
         print(f"Found {len(tenors_available)} tenors: {tenors_available}")
 
-    print("Normalizing to local-currency-per-USD...")
+    print("Normalizing to USD per unit of currency...")
     long = normalize(raw)
 
     tenors = sorted(long["tenor"].unique())
@@ -175,6 +176,20 @@ def main() -> None:
             .sort_values("date")
         )
         save(wide, tenor_dir / f"{tenor}_wide", args.csv)
+
+    # ── Units metadata (the files themselves carry no units) ──────────────────
+    meta = (
+        long.groupby("tenor")
+        .agg(currencies=("currency", "nunique"), obs=("rate", "size"),
+             date_min=("date", "min"), date_max=("date", "max"))
+        .reset_index()
+    )
+    meta["units"] = "USD per 1 unit of currency"
+    meta["note"] = ("Inverse of macrodata/fx_spot (local currency per USD). "
+                    "Datastream pairs quoted per 100/1000 units are rescaled.")
+    meta["file"] = "by_tenor/" + meta["tenor"] + "_wide.parquet"
+    meta.to_csv(out_dir / "fx_forward_meta.csv", index=False)
+    print(f"  -> {out_dir / 'fx_forward_meta.csv'}")
 
     print(f"Done. {len(tenors)} tenor files written to {out_dir / 'by_tenor'}")
 
