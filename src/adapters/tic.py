@@ -5,14 +5,17 @@ Fetches the "Major Foreign Holders of Treasury Securities" monthly table
 directly from the US Treasury website.
 
 Two source files are used:
-  mfhhis01.txt  — full historical archive, 2000–present, multiple year blocks
-                  URL: https://treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt
-  mfh.txt       — rolling current window (~13 months, most recent data)
-                  URL: https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/mfh.txt
+  mfhhis01.txt    — historical archive, 2000 to the last full calendar year,
+                    one tab-delimited block per year
+                    URL: https://treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt
+  slt_table5.txt  — SLT Table 5, rolling 13-month window (most recent data)
+                    URL: https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table5.txt
 
-The adapter fetches both, deduplicates on (date, country), and merges. The
-historical file has full coverage back to Jan 2000; the current file fills in
-the most recent months not yet in the archive.
+The adapter fetches both and merges on (date, country); where they overlap the
+SLT table wins, since it carries the latest revisions.
+
+The old rolling file mfh.txt (same directory) was frozen at Jan 2023 when
+Treasury moved the table onto Form SLT data; it is no longer used.
 
 Holdings are in billions of USD. Released monthly with roughly a 45-day lag.
 
@@ -30,6 +33,7 @@ Output columns
 from __future__ import annotations
 
 import io
+import re
 from datetime import date
 
 import pandas as pd
@@ -37,8 +41,8 @@ import pandas as pd
 _MFH_HISTORICAL_URL = (
     "https://treasury.gov/resource-center/data-chart-center/tic/Documents/mfhhis01.txt"
 )
-_MFH_CURRENT_URL = (
-    "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/mfh.txt"
+_SLT_TABLE5_URL = (
+    "https://ticdata.treasury.gov/resource-center/data-chart-center/tic/Documents/slt_table5.txt"
 )
 
 _MONTHS = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -49,6 +53,11 @@ _SKIP_COUNTRIES = {
     "treasury bills", "t-bonds & notes", "all other",
     "memo:", "total foreign",
 }
+
+
+def _clean_country(raw: str) -> str:
+    """Strip quotes, whitespace and trailing footnote markers ('Belgium  5/' -> 'Belgium')."""
+    return re.sub(r"\s+\d+/$", "", raw.strip().strip('"')).strip()
 
 
 def _fetch(url: str) -> str:
@@ -68,7 +77,7 @@ def _parse_block(month_parts: list[str], year: int, data_lines: list[str]) -> li
     records = []
     for line in data_lines:
         parts = line.split("\t")
-        country = parts[0].strip().strip('"')
+        country = _clean_country(parts[0])
         if not country or country.lower() in _SKIP_COUNTRIES:
             continue
         if country.startswith(("---", "===", "1/", "2/", "3/", "*")):
@@ -147,47 +156,25 @@ def _parse_multiyear(text: str) -> pd.DataFrame:
     return pd.DataFrame(records)
 
 
-def _parse_current(text: str) -> pd.DataFrame:
-    """Parse the rolling mfh.txt (single block, space-delimited)."""
+def _parse_slt(text: str) -> pd.DataFrame:
+    """Parse slt_table5.txt: tab-delimited, header 'Country<TAB>2026-07<TAB>2026-06...'."""
     lines = text.splitlines()
-
-    header_start = None
-    for i, line in enumerate(lines):
-        parts = line.split()
-        if len(parts) >= 3 and parts[0] in _MONTHS:
-            header_start = i
-            break
-
-    if header_start is None:
-        return pd.DataFrame(columns=["date", "country", "holdings_bln_usd"])
-
-    month_line = lines[header_start].split()
-    year_line  = lines[header_start + 1].split()
-
-    # Build (month, year) pairs — skip the first token of year_line (it's "Country")
-    month_tokens = month_line          # ['Jan', 'Dec', 'Nov', ...]
-    year_tokens  = year_line[1:]       # ['2023', '2022', ...]
-
-    dates: list[pd.Timestamp] = []
-    for m, y in zip(month_tokens, year_tokens):
-        try:
-            dates.append(pd.to_datetime(f"{m} {y}", format="%b %Y"))
-        except ValueError:
-            dates.append(pd.NaT)
+    header = next((i for i, l in enumerate(lines) if l.split("\t")[0].strip() == "Country"), None)
+    if header is None:
+        raise ValueError("slt_table5.txt: 'Country' header row not found; format changed?")
+    dates = [pd.to_datetime(t.strip(), format="%Y-%m", errors="coerce")
+             for t in lines[header].split("\t")[1:]]
 
     records: list[dict] = []
-    for line in lines[header_start + 2:]:
-        raw = line.split("  ")  # two-space delimiter
-        parts = [p.strip() for p in raw if p.strip()]
-        if not parts:
-            continue
-        country = parts[0].strip('"')
-        if not country or country.lower() in _SKIP_COUNTRIES:
-            continue
-        if country.startswith(("---", "1/", "2/", "*")):
+    for line in lines[header + 1:]:
+        parts = line.split("\t")
+        country = _clean_country(parts[0])
+        if not country:
+            break  # blank row separates the data from the notes
+        if country.lower() in _SKIP_COUNTRIES or country.lower().startswith("of which"):
             continue
         for dt, val in zip(dates, parts[1:]):
-            if pd.isna(dt) or not val:
+            if pd.isna(dt) or not val.strip():
                 continue
             try:
                 holdings = float(val.replace(",", ""))
@@ -206,16 +193,15 @@ def pull(conn, config: dict, watermark=None) -> pd.DataFrame:
     hist_text = _fetch(_MFH_HISTORICAL_URL)
     df_hist = _parse_multiyear(hist_text)
 
-    # Fetch the current rolling file to pick up months not yet in the archive
-    print("  Fetching TIC current window (mfh.txt)...")
-    curr_text = _fetch(_MFH_CURRENT_URL)
-    df_curr = _parse_current(curr_text)
+    # Fetch the rolling SLT table for months not yet in the archive
+    print("  Fetching TIC current window (slt_table5.txt)...")
+    df_curr = _parse_slt(_fetch(_SLT_TABLE5_URL))
 
     df = pd.concat([df_hist, df_curr], ignore_index=True)
     df["date"] = pd.to_datetime(df["date"])
 
-    # Deduplicate — prefer historical file (it's more stable), but current fills recent gaps
-    df = df.sort_values(["date", "country"]).drop_duplicates(subset=["date", "country"], keep="last")
+    # SLT rows come last, so keep="last" lets its revisions win over the archive
+    df = df.drop_duplicates(subset=["date", "country"], keep="last")
 
     if watermark is not None:
         df = df[df["date"] > pd.to_datetime(str(watermark))]
