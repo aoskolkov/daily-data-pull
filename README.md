@@ -22,7 +22,8 @@ A config-driven pipeline for pulling, storing, and cleaning financial and macroe
 | VIX family | Daily | FRED | 1990–present (VIX), 2007–present (VXV 3-month) |
 | World Bank macro | Annual | World Bank API | 1960–present, ~180 countries |
 | World Bank fiscal | Annual | World Bank API | 1990–present, ~35 countries |
-| IMF BOP/IIP/CPIS/CDIS | Annual | IMF SDMX API | 1980–present (network-dependent) |
+| IMF BOP/IIP/PIP (CPIS)/DIP (CDIS) | Annual | IMF data API (api.imf.org) | 1980–present |
+| World Bank International Debt Statistics | Annual | World Bank API (IDS + WDI archives) | 1970–present |
 | IMF World Economic Outlook | Annual | IMF bulk download | 1980–2029, 196 countries, 11 indicators |
 | BIS international debt securities | Quarterly | BIS Statistics API | 1993–present, 87 countries |
 | BIS locational banking statistics | Quarterly | BIS Statistics API | 2000–present, 48 reporting countries, cross-border claims |
@@ -131,7 +132,8 @@ src/
     wrds_ds_comds.py     # Datastream commodity spots/indices (multi-mnemonic)
     wrds_ds_index.py     # Datastream equity index panel (multi-mnemonic)
     external.py          # FRED, World Bank, file-based sources
-    imf.py               # IMF SDMX API (BOP, IIP, CPIS, CDIS)
+    imf.py               # IMF data API, api.imf.org (BOP, IIP, PIP/CPIS, DIP/CDIS)
+    wb_api.py            # World Bank API v2 sources endpoint (IDS, WDI archives)
     imf_weo.py           # IMF World Economic Outlook bulk file
     bis.py               # BIS Statistics REST API
     tic.py               # US Treasury TIC Major Foreign Holders
@@ -204,7 +206,7 @@ Parquet preserves column dtypes (dates stay dates, floats stay floats). Each `.p
 
 - **LME copper, zinc, nickel, tin cash prices** are not in `tr_ds_comds`. The series `LCPCASH`, `LZZCASH`, `LNICASH`, `LTICASH` appear to live in a different WRDS schema. Workaround: use the futures term structure from `ds_wti_curve` / `ds_brent_curve` pattern applied to LME.
 - **Henry Hub natural gas** (`NATLGAS`) ended 2020-09 in Datastream. No active USD spot series found in `tr_ds_comds` after that date; UK NBP gas (`NATBGAS`, GBP) is active.
-- **IMF datasets** (imf_bop, imf_iip, imf_cpis, imf_cdis) require access to `dataservices.imf.org`. This is blocked on some institutional networks. They work fine on unrestricted connections.
+- **IMF datasets** (imf_bop, imf_iip, imf_cpis, imf_cdis) come from `api.imf.org`. The old `dataservices.imf.org` API was retired in 2025; CPIS and CDIS are now published as PIP and DIP.
 - **Bloomberg Commodity Index (BCOM)** not found in `tr_ds_comds`. Use S&P GSCI (`CGSYSPT`) or CRB (`NYFECRB`) as alternatives.
 - **Brazil equity** (`D2BRFS$`) is the DJGL Brazil Financial Services sub-index, not the Bovespa (IBOVESPA). Swap this mnemonic in `config/datasets.yaml` if you need the headline index.
 - **TIC country list changes over time**: `mfhhis01.txt` covers 2000–present with ~57 countries, but the set of reported countries has changed (new countries are added when their holdings cross a reporting threshold). The `All Other` residual captures the rest.

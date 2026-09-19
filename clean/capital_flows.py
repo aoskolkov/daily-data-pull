@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean IMF BOP (flows) and IIP (stocks) data.
 
 Produces:
@@ -15,7 +15,7 @@ The five financial-account components (BPM6 sign convention):
 
 Each is split assets / liabilities / net where available.
 
-Input:  data/imf_bop/   data/imf_iip/
+Input:  data/imf_bop/   data/imf_iip/   (api.imf.org; see config/datasets.yaml)
 Output: macrodata/capital_flows/
 
 Usage
@@ -36,44 +36,12 @@ import pandas as pd
 
 DEFAULT_OUTPUT = "macrodata/capital_flows"
 
-try:
-    import sys as _sys
-    _sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1]))
-    from src.crosswalk import load_crosswalk, map_iso2_to_iso3 as _map_iso2_to_iso3
-    _XW = load_crosswalk()
-    def _to_iso3(s: pd.Series) -> pd.Series:
-        return _map_iso2_to_iso3(_XW, s)
-except Exception:
-    def _to_iso3(s: pd.Series) -> pd.Series:   # type: ignore[misc]
-        return s  # no-op if crosswalk not available
-
-# Maps raw IMF indicator code -> human label used in output columns.
-# Update if discovery reveals different codes at your institution.
-INDICATOR_LABELS: dict[str, str] = {
-    # BOP flows
-    "BFDI":   "fdi_net",
-    "BFDIA":  "fdi_assets",
-    "BFDIL":  "fdi_liab",
-    "BFPIE":  "port_eq_net",
-    "BFPIEA": "port_eq_assets",
-    "BFPIEL": "port_eq_liab",
-    "BFPID":  "port_dbt_net",
-    "BFPIDA": "port_dbt_assets",
-    "BFPIDL": "port_dbt_liab",
-    "BFOI":   "other_net",
-    "BFOIA":  "other_assets",
-    "BFOIL":  "other_liab",
-    "BFRA":   "reserves_net",
-    # IIP stocks
-    "IADIP":  "fdi_assets_pos",
-    "ILDIP":  "fdi_liab_pos",
-    "IAPIE":  "port_eq_assets_pos",
-    "ILPIE":  "port_eq_liab_pos",
-    "IAPID":  "port_dbt_assets_pos",
-    "ILPID":  "port_dbt_liab_pos",
-    "IAOI":   "other_assets_pos",
-    "ILOI":   "other_liab_pos",
-    "IARA":   "reserves_pos",
+# Indicator labels are assigned by the adapter from `labels:` in datasets.yaml
+# (api.imf.org codes such as A_NFA_T.D_F -> fdi_assets). Portfolio equity/debt
+# nets are not published separately, so they are derived here as assets - liab.
+DERIVED_NETS: dict[str, tuple[str, str]] = {
+    "port_eq_net":  ("port_eq_assets",  "port_eq_liab"),
+    "port_dbt_net": ("port_dbt_assets", "port_dbt_liab"),
 }
 
 
@@ -95,23 +63,22 @@ def load_imf(dataset_name: str, storage_root: str) -> pd.DataFrame | None:
 
     df = pd.read_parquet(path)
     df.columns = df.columns.str.lower()
-
-    # Normalise the country column — IMF uses REF_AREA (typically ISO2)
-    if "ref_area" in df.columns and "iso2c" not in df.columns:
-        df = df.rename(columns={"ref_area": "iso2c"})
-
-    # Map to iso3c (crosswalk falls back to original value if not found)
-    if "iso2c" in df.columns:
-        df["iso3c"] = _to_iso3(df["iso2c"])
-
+    df["iso3c"] = df["country"]          # api.imf.org uses ISO3 (plus aggregates, e.g. G001)
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date", "value"])
     df["year"] = df["date"].dt.year
+    df = df[["year", "iso3c", "indicator", "value"]]
 
-    # Apply human labels where available
-    if "indicator" in df.columns:
-        df["indicator_raw"] = df["indicator"]
-        df["indicator"] = df["indicator"].map(INDICATOR_LABELS).fillna(df["indicator"])
+    wide = df.pivot_table(index=["year", "iso3c"], columns="indicator", values="value", aggfunc="last")
+    derived = [
+        (wide[a] - wide[l]).rename(name)
+        for name, (a, l) in DERIVED_NETS.items()
+        if a in wide.columns and l in wide.columns and name not in wide.columns
+    ]
+    if derived:
+        extra = pd.concat(derived, axis=1).stack().rename("value").reset_index()
+        extra.columns = ["year", "iso3c", "indicator", "value"]
+        df = pd.concat([df, extra], ignore_index=True)
 
     n_countries = df["iso3c"].nunique() if "iso3c" in df.columns else "?"
     n_indicators = df["indicator"].nunique() if "indicator" in df.columns else "?"

@@ -7,7 +7,7 @@ Run from repo root:
   python wrdsdl.py discover comp
   python wrdsdl.py discover comp --table exrt_fwd
   python wrdsdl.py discover imf --dataset BOP
-  python wrdsdl.py discover imf --dataset CPIS
+  python wrdsdl.py discover imf --dataset PIP
   python wrdsdl.py refresh fx_spot
   python wrdsdl.py validate
   python wrdsdl.py catalog
@@ -31,7 +31,7 @@ except ImportError:
 
 from .connection import get_env_credential, wrds_connection
 from . import discovery, normalize, storage, state, catalog
-from .adapters import wrds_sql, datastream, wrds_fut, wrds_fx, wrds_ds_comds, wrds_ds_index, wrds_ds_econ, external, imf as imf_adapter, tic, bis, imf_weo, msci_web, cftc
+from .adapters import wrds_sql, datastream, wrds_fut, wrds_fx, wrds_ds_comds, wrds_ds_index, wrds_ds_econ, external, imf as imf_adapter, tic, bis, imf_weo, msci_web, cftc, wb_api
 
 
 # ── Config loading ────────────────────────────────────────────────────────────
@@ -128,6 +128,8 @@ def do_pull(conn, ds_config: dict, force_full: bool = False) -> None:
         df = msci_web.pull(ds_config, watermark)
     elif source == "cftc":
         df = cftc.pull(ds_config, watermark)
+    elif source == "wb_api":
+        df = wb_api.pull(conn, ds_config, watermark)
     else:
         raise ValueError(f"Unknown source '{source}'")
 
@@ -172,7 +174,7 @@ def cmd_pull(args, conn_config: dict, datasets: list[dict], force_full: bool = F
     targets = datasets if getattr(args, "all", False) else [find_dataset(datasets, args.dataset)]
 
     wrds_targets = [ds for ds in targets if ds["source"] in ("wrds_sql", "datastream", "wrds_fut", "wrds_fx", "wrds_ds_comds", "wrds_ds_index", "wrds_ds_econ")]
-    noconn_targets = [ds for ds in targets if ds["source"] in ("external", "imf", "tic", "bis", "imf_weo", "msci_web", "cftc")]
+    noconn_targets = [ds for ds in targets if ds["source"] in ("external", "imf", "tic", "bis", "imf_weo", "msci_web", "cftc", "wb_api")]
 
     if wrds_targets:
         with wrds_connection(username=_wrds_username(conn_config)) as conn:
@@ -194,9 +196,9 @@ def cmd_discover(args, conn_config: dict) -> None:
         dataset = getattr(args, "dataset", None)
         if not dataset:
             print("Usage: python wrdsdl.py discover imf --dataset <DATASET>")
-            print("Available IMF datasets: BOP, IIP, CPIS, CDIS")
+            print("IMF.STA dataflows, e.g.: BOP, IIP, PIP (ex-CPIS), DIP (ex-CDIS), IL, MFS_IR, CPI")
             return
-        print(f"\nIMF dataset: {dataset}")
+        print(f"\nIMF dataflow: IMF.STA:{dataset}")
         codes = imf_adapter.discover(dataset)
         for dim, codelist in codes.items():
             print(f"\n  Dimension: {dim}  ({len(codelist)} codes)")
@@ -303,6 +305,7 @@ _CLEAN_SCRIPTS: list[tuple[str, list[str]]] = [
     ("clean/imf_weo.py",        []),
     ("clean/msci.py",           []),
     ("clean/cftc_fx.py",        []),
+    ("clean/partial_default.py", []),
 ]
 
 
