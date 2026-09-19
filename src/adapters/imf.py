@@ -1,44 +1,77 @@
 """
-Adapter for the IMF SDMX JSON REST API.
+Adapter for the IMF data API (api.imf.org, SDMX 2.1 REST).
 
-Covers: BOP (flows), IIP (stocks), CPIS (bilateral portfolio), CDIS (bilateral FDI).
-No API key required. Rate-limited to avoid 429s.
+The old SDMX-JSON service (dataservices.imf.org/REST/SDMX_JSON.svc) was retired
+with the move to the new IMF data portal in 2025; the host no longer resolves.
+The replacement needs no API key:
 
-API docs: https://dataservices.imf.org/REST/SDMX_JSON.svc/help
+    data:       https://api.imf.org/external/sdmx/2.1/data/IMF.STA,{FLOW}/{KEY}
+    structure:  https://api.imf.org/external/sdmx/3.0/structure/dataflow/IMF.STA/{FLOW}/+
 
-Discovery (find valid indicator codes before filling the manifest):
-    python wrdsdl.py discover imf --dataset BOP
-    python wrdsdl.py discover imf --dataset IIP
-    python wrdsdl.py discover imf --dataset CPIS
-    python wrdsdl.py discover imf --dataset CDIS
+Datasets were renamed and restructured (IFS-style codes like BFDI are gone):
+    BOP   Balance of Payments          COUNTRY.BOP_ACCOUNTING_ENTRY.INDICATOR.UNIT.FREQUENCY
+    IIP   International Inv. Position  COUNTRY.BOP_ACCOUNTING_ENTRY.INDICATOR.UNIT.FREQUENCY
+    PIP   Portfolio Inv. Positions by Counterpart (formerly CPIS)
+          COUNTRY.ACCOUNTING_ENTRY.INDICATOR.SECTOR.COUNTERPART_SECTOR.COUNTERPART_COUNTRY.FREQUENCY
+    DIP   Direct Inv. Positions by Counterpart (formerly CDIS)
+          COUNTRY.DV_TYPE.INDICATOR.COUNTERPART_COUNTRY.FREQUENCY
+Countries are ISO3. OBS_VALUE is in units (e.g. USD), not scaled; SCALE is a
+display hint only.
+
+Config keys (datasets.yaml)
+---------------------------
+  source: imf
+  dataflow: BOP                 # IMF.STA dataflow id
+  dims:                         # full series key, in the dataflow's dimension order
+    COUNTRY: ""                 #   "" = all, a string, or a list (joined with '+')
+    BOP_ACCOUNTING_ENTRY: [A_NFA_T, L_NIL_T]
+    INDICATOR: [D_F, P_F]
+    UNIT: USD
+    FREQUENCY: A
+  labels:                       # optional: "<code>.<code>" over label_dims -> label;
+    A_NFA_T.D_F: fdi_assets     #   rows whose combination is not listed are dropped
+  label_dims: [BOP_ACCOUNTING_ENTRY, INDICATOR]
+  chunk_by: INDICATOR           # optional: one request per code in this dimension
+  start: "1980"
+
+Output: date, country, indicator (label, or raw code without labels), value,
+plus every other dimension as a lower-case column, e.g. counterpart_country.
+
+Discovery:  python wrdsdl.py discover imf --dataset BOP
 """
 
 from __future__ import annotations
 
+import io
 import time
-from datetime import date
 
 import pandas as pd
 import requests
 
-BASE_URL = "https://dataservices.imf.org/REST/SDMX_JSON.svc"
-_PAUSE = 0.6          # seconds between requests; IMF throttles at ~10 req/s
+DATA_URL = "https://api.imf.org/external/sdmx/2.1/data"
+STRUCTURE_URL = "https://api.imf.org/external/sdmx/3.0/structure/dataflow"
+AGENCY = "IMF.STA"
+_CSV = {"Accept": "application/vnd.sdmx.data+csv;version=1.0.0"}
+_PAUSE = 0.5
 
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
-def _get(url: str, params: dict | None = None, retries: int = 4) -> dict:
+def _get(url: str, params: dict | None = None, headers: dict | None = None,
+         retries: int = 4, timeout: int = 1800) -> requests.Response:
     for attempt in range(1, retries + 1):
         time.sleep(_PAUSE)
         try:
-            resp = requests.get(url, params=params, timeout=90)
-            if resp.status_code == 429:
-                wait = 15 * attempt
-                print(f"  Rate-limited. Waiting {wait}s...")
+            resp = requests.get(url, params=params, headers=headers, timeout=timeout)
+            if resp.status_code in (429, 502, 503, 504):
+                wait = 20 * attempt
+                print(f"  HTTP {resp.status_code}. Waiting {wait}s...")
                 time.sleep(wait)
                 continue
+            if resp.status_code == 404:   # SDMX "no results found"
+                return resp
             resp.raise_for_status()
-            return resp.json()
+            return resp
         except requests.exceptions.RequestException as exc:
             if attempt == retries:
                 raise
@@ -46,215 +79,139 @@ def _get(url: str, params: dict | None = None, retries: int = 4) -> dict:
     raise RuntimeError(f"Failed after {retries} attempts: {url}")
 
 
-# ── Discovery ─────────────────────────────────────────────────────────────────
-
-def discover(dataset: str) -> dict[str, dict[str, str]]:
-    """
-    Return {dimension_name: {code: label}} for an IMF dataset.
-    Use to find valid indicator codes before setting the manifest.
-    """
-    url = f"{BASE_URL}/DataStructure/{dataset}"
-    data = _get(url)
-
-    codelists = (
-        data.get("Structure", {})
-        .get("CodeLists", {})
-        .get("CodeList", [])
-    )
-    if isinstance(codelists, dict):
-        codelists = [codelists]
-
-    result: dict[str, dict[str, str]] = {}
-    for cl in codelists:
-        codes = cl.get("Code", [])
-        if isinstance(codes, dict):
-            codes = [codes]
-        dim_id = cl.get("@id", "?")
-        result[dim_id] = {
-            c["@value"]: (
-                c.get("Description", {}).get("#text", "")
-                if isinstance(c.get("Description"), dict)
-                else str(c.get("Description", ""))
-            )
-            for c in codes
-        }
-    return result
-
-
-# ── SDMX JSON parsing ─────────────────────────────────────────────────────────
-
-def _parse_compact(data: dict) -> pd.DataFrame:
-    """
-    Parse a CompactData response into a flat DataFrame.
-
-    Each Series becomes rows; dimension attributes become columns.
-    UNIT_MULT is applied automatically (0=units, 3=thousands, 6=millions, 9=billions).
-    """
-    ds = data.get("CompactData", {}).get("DataSet", {})
-    series_raw = ds.get("Series")
-    if not series_raw:
+def _fetch_csv(dataflow: str, key: str, start: str | None) -> pd.DataFrame:
+    params = {"detail": "dataonly"}
+    if start:
+        params["startPeriod"] = start
+    resp = _get(f"{DATA_URL}/{AGENCY},{dataflow}/{key}", params, _CSV)
+    if resp.status_code == 404 or not resp.text.strip():
         return pd.DataFrame()
-
-    if isinstance(series_raw, dict):
-        series_raw = [series_raw]
-
-    rows: list[dict] = []
-    for series in series_raw:
-        # Dimension values from @ attributes
-        dims = {k.lstrip("@"): v for k, v in series.items() if k.startswith("@")}
-        unit_mult = int(dims.pop("UNIT_MULT", 0) or 0)
-        dims.pop("TIME_FORMAT", None)
-        multiplier = 10 ** unit_mult
-
-        obs = series.get("Obs", [])
-        if isinstance(obs, dict):
-            obs = [obs]
-        for ob in obs:
-            val_str = ob.get("@OBS_VALUE")
-            if val_str is None:
-                continue
-            try:
-                val = float(val_str) * multiplier
-            except (ValueError, TypeError):
-                continue
-            rows.append({**dims, "period": ob["@TIME_PERIOD"], "value": val})
-
-    return pd.DataFrame(rows) if rows else pd.DataFrame()
+    df = pd.read_csv(io.StringIO(resp.text), dtype=str)
+    # dataonly still emits every attribute column (empty); series without
+    # observations in the window come back as rows with no TIME_PERIOD.
+    df = df.dropna(subset=["TIME_PERIOD", "OBS_VALUE"])
+    return df[[c for c in df.columns if df[c].notna().any()]]
 
 
-def _fetch_series(dataset: str, key: str, start: str, end: str) -> pd.DataFrame:
-    url = f"{BASE_URL}/CompactData/{dataset}/{key}"
-    params = {"startPeriod": start, "endPeriod": end}
-    return _parse_compact(_get(url, params))
+# ── Keys and dates ───────────────────────────────────────────────────────────
+
+def _key(dims: dict) -> str:
+    return ".".join("+".join(v) if isinstance(v, list) else str(v or "") for v in dims.values())
 
 
-# ── BOP / IIP: non-bilateral ──────────────────────────────────────────────────
-
-def _pull_nonbilateral(config: dict, watermark=None) -> pd.DataFrame:
-    dataset    = config["dataset"]           # "BOP" or "IIP"
-    frequency  = config.get("frequency", "A")
-    indicators = config.get("indicators") or []
-    start = str(watermark)[:4] if watermark is not None else config.get("start", "1980")
-    end   = str(date.today().year)
-
-    if not indicators:
-        raise ValueError(
-            f"No indicators listed for dataset '{dataset}'.\n"
-            f"Run:  python wrdsdl.py discover imf --dataset {dataset}\n"
-            f"Then add the codes you need to config/datasets.yaml under 'indicators:'."
-        )
-
-    frames: list[pd.DataFrame] = []
-    for indicator in indicators:
-        key = f"{frequency}..{indicator}"      # double-dot = wildcard REF_AREA
-        print(f"  {dataset}.{indicator}...", end=" ", flush=True)
-        df = _fetch_series(dataset, key, start, end)
-        if df.empty:
-            print("no data")
-        else:
-            frames.append(df)
-            print(f"{len(df):,} rows")
-
-    if not frames:
-        return pd.DataFrame()
-
-    result = pd.concat(frames, ignore_index=True)
-
-    # Normalise column names
-    col_map = {}
-    for c in result.columns:
-        u = c.upper()
-        if u == "REF_AREA":
-            col_map[c] = "iso2c"
-        elif u == "INDICATOR":
-            col_map[c] = "indicator"
-        elif u == "FREQ":
-            col_map[c] = "freq"
-    result = result.rename(columns=col_map)
-
-    result["date"] = pd.to_datetime(
-        result["period"].astype(str).str[:4] + "-01-01", errors="coerce"
-    )
-    result["source"] = f"imf_{dataset.lower()}"
-    return result.dropna(subset=["date", "value"])
+def _period_to_date(p: pd.Series) -> pd.Series:
+    """'2024' -> 2024-01-01, '2024-Q3' -> 2024-07-01, '2024-M05' -> 2024-05-01, '2024-S2' -> 2024-07-01."""
+    p = p.astype(str)
+    year = p.str[:4]
+    month = pd.Series("01", index=p.index)
+    q = p.str.extract(r"-Q(\d)$")[0]
+    m = p.str.extract(r"-M?(\d{2})$")[0]
+    s = p.str.extract(r"-S(\d)$")[0]
+    month = month.where(q.isna(), ((q.astype(float) - 1) * 3 + 1).map(lambda x: f"{int(x):02d}" if pd.notna(x) else "01"))
+    month = month.where(m.isna(), m)
+    month = month.where(s.isna(), s.map(lambda x: "07" if x == "2" else "01"))
+    return pd.to_datetime(year + "-" + month + "-01", errors="coerce")
 
 
-# ── CPIS / CDIS: bilateral ────────────────────────────────────────────────────
+# ── Discovery ────────────────────────────────────────────────────────────────
 
-def _pull_bilateral(config: dict, watermark=None) -> pd.DataFrame:
+def _structure(dataflow: str) -> tuple[list[str], dict[str, dict[str, str]], dict[str, str]]:
+    """Return (dimension ids in key order, {dimension: {code: label}}, {any code: label})."""
+    resp = _get(f"{STRUCTURE_URL}/{AGENCY}/{dataflow}/+",
+                {"references": "descendants", "detail": "full"}, timeout=300)
+    data = resp.json()["data"]
+    def _name(c: dict) -> str:
+        n = c.get("name")
+        return n if isinstance(n, str) else c.get("names", {}).get("en", "")
+
+    codelists = {
+        cl["id"]: {c["id"]: _name(c) for c in cl.get("codes", [])}
+        for cl in data.get("codelists", [])
+    }
+    concept_cl = {}
+    for cs in data.get("conceptSchemes", []):
+        for c in cs.get("concepts", []):
+            enum = c.get("coreRepresentation", {}).get("enumeration", "")
+            if enum:
+                concept_cl[c["id"]] = enum.split(":")[-1].split("(")[0]
+    dims = data["dataStructures"][0]["dataStructureComponents"]["dimensionList"]["dimensions"]
+    order = [d["id"] for d in sorted(dims, key=lambda d: d.get("position", 0))]
+    # Dataflow-specific lists (CL_PIP_COUNTRY: TX093 = "SEFER + SSIO", ...) name codes
+    # the generic lists the concepts point to lack; keep them as a lookup fallback.
+    names: dict[str, str] = {}
+    for cl_id in sorted(codelists, key=lambda k: k.startswith(f"CL_{dataflow}_")):
+        names.update(codelists[cl_id])
+    return order, {d: codelists.get(concept_cl.get(d, ""), {}) for d in order}, names
+
+
+def discover(dataset: str, sample_country: str = "USA") -> dict[str, dict[str, str]]:
     """
-    Pull CPIS or CDIS — bilateral (reporter × counterpart × instrument).
-
-    Strategy: try a full wildcard first. If the response is too large or errors,
-    fall back to pulling per reporting country using the REF_AREA codelist.
+    {dimension: {code: label}} for an IMF dataflow. The codelists are huge
+    (CL_BOP_INDICATOR has ~1,000 codes), so codes are restricted to those that
+    occur in a one-country sample pull whenever that pull succeeds.
     """
-    dataset   = config["dataset"]
-    frequency = config.get("frequency", "A")
-    start = str(watermark)[:4] if watermark is not None else config.get("start", "2001")
-    end   = str(date.today().year)
-
-    # Try full wildcard
-    key = f"{frequency}..."
-    print(f"  {dataset}: trying full pull (all reporters × counterparts)...")
+    order, codes, names = _structure(dataset)
+    print(f"  Key order: {'.'.join(order)}")
+    dims = {d: (sample_country if d == "COUNTRY" else "") for d in order}
     try:
-        df = _fetch_series(dataset, key, start, end)
-        if not df.empty:
-            return _finalize_bilateral(df, dataset)
+        sample = _fetch_csv(dataset, _key(dims), start=None)
     except Exception as exc:
-        print(f"  Full pull failed ({exc}). Falling back to per-reporter...")
-
-    # Fall back: one reporter at a time
-    codes = discover(dataset)
-    reporter_codelist = next(
-        (v for k, v in codes.items() if "REF_AREA" in k or "REPORTER" in k), {}
-    )
-    if not reporter_codelist:
-        raise RuntimeError(f"Could not find reporter codelist for {dataset}")
-
-    reporters = list(reporter_codelist.keys())
-    print(f"  Pulling {len(reporters)} reporters...")
-    frames: list[pd.DataFrame] = []
-    for reporter in reporters:
-        k = f"{frequency}.{reporter}.."
-        try:
-            df = _fetch_series(dataset, k, start, end)
-            if not df.empty:
-                frames.append(df)
-        except Exception as exc:
-            print(f"  WARNING: {reporter} failed: {exc}")
-
-    if not frames:
-        return pd.DataFrame()
-    return _finalize_bilateral(pd.concat(frames, ignore_index=True), dataset)
+        print(f"  Sample pull failed ({exc}); showing full codelists.")
+        sample = pd.DataFrame()
+    if sample.empty:
+        return codes
+    print(f"  Codes below are those present in the {sample_country} sample ({len(sample):,} obs).")
+    return {
+        d: {c: codes[d].get(c) or names.get(c, "") for c in sorted(sample[d].dropna().unique())}
+        if d in sample.columns else codes[d]
+        for d in order
+    }
 
 
-def _finalize_bilateral(df: pd.DataFrame, dataset: str) -> pd.DataFrame:
-    col_map = {}
-    for c in df.columns:
-        u = c.upper()
-        if u == "REF_AREA":
-            col_map[c] = "reporter"
-        elif u in ("COUNTERPART_AREA", "CPART_AREA", "COUNTERPART"):
-            col_map[c] = "counterpart"
-        elif u == "INDICATOR":
-            col_map[c] = "indicator"
-        elif u == "FREQ":
-            col_map[c] = "freq"
-    df = df.rename(columns=col_map)
-    df["date"] = pd.to_datetime(
-        df["period"].astype(str).str[:4] + "-01-01", errors="coerce"
-    )
-    df["source"] = f"imf_{dataset.lower()}"
-    n_reporters    = df["reporter"].nunique()    if "reporter"    in df.columns else "?"
-    n_counterparts = df["counterpart"].nunique() if "counterpart" in df.columns else "?"
-    print(f"  {dataset}: {len(df):,} rows, {n_reporters} reporters × {n_counterparts} counterparts")
-    return df.dropna(subset=["date", "value"])
-
-
-# ── Dispatch ──────────────────────────────────────────────────────────────────
+# ── Pull ─────────────────────────────────────────────────────────────────────
 
 def pull(config: dict, watermark=None) -> pd.DataFrame:
-    dataset = config["dataset"]
-    if dataset in ("CPIS", "CDIS"):
-        return _pull_bilateral(config, watermark)
-    return _pull_nonbilateral(config, watermark)
+    dataflow = config["dataflow"]
+    dims: dict = dict(config["dims"])
+    labels: dict = config.get("labels") or {}
+    label_dims: list[str] = config.get("label_dims") or ["INDICATOR"]
+    chunk_by: str | None = config.get("chunk_by")
+    start = str(watermark)[:4] if watermark is not None else str(config.get("start", ""))
+
+    chunks = [dims]
+    if chunk_by and isinstance(dims.get(chunk_by), list):
+        chunks = [{**dims, chunk_by: code} for code in dims[chunk_by]]
+
+    frames = []
+    for d in chunks:
+        what = d.get(chunk_by, "") if chunk_by else "all"
+        t0 = time.time()
+        df = _fetch_csv(dataflow, _key(d), start or None)
+        print(f"  {dataflow} {what}: {len(df):,} obs ({time.time() - t0:.0f}s)")
+        if not df.empty:
+            frames.append(df)
+    if not frames:
+        return pd.DataFrame()
+    df = pd.concat(frames, ignore_index=True)
+
+    if labels:
+        combo = df[label_dims].astype(str).agg(".".join, axis=1)
+        df = df[combo.isin(labels)].copy()
+        df["indicator_code"] = df["INDICATOR"]
+        df["INDICATOR"] = combo[df.index].map(labels)
+
+    keep = [c for c in dims if c in df.columns and c != "FREQUENCY"]
+    out = df[keep].copy()
+    out.columns = [c.lower() for c in keep]
+    if "indicator_code" in df.columns:
+        out["indicator_code"] = df["indicator_code"]
+    out["freq"] = df["FREQUENCY"] if "FREQUENCY" in df.columns else None
+    out["date"] = _period_to_date(df["TIME_PERIOD"])
+    out["value"] = pd.to_numeric(df["OBS_VALUE"], errors="coerce")
+    out["source"] = f"imf_{dataflow.lower()}"
+    out = out.dropna(subset=["date", "value"]).reset_index(drop=True)
+
+    n_c = out["country"].nunique() if "country" in out.columns else "?"
+    print(f"  {dataflow}: {len(out):,} rows, {n_c} countries, "
+          f"{out['indicator'].nunique()} indicators, {out['date'].min().date()} – {out['date'].max().date()}")
+    return out

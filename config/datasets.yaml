@@ -475,94 +475,227 @@ datasets:
     start: "1990"
     note: "World Bank central government debt (% GDP), annual."
 
-  # ── IMF BOP: financial account flows ─────────────────────────────────────────
-  # Before first pull, verify indicator codes:
+  # ── World Bank International Debt Statistics (sovereign debt & arrears) ─────
+  # Series used by Arellano, Mateos-Planas & Ríos-Rull, "Partial Default"
+  # (JPE 2023), plus creditor / relief breakdowns. IDS needs the multidimensional
+  # API (src/adapters/wb_api.py); pandas_datareader cannot see these series.
+  # clean/partial_default.py combines the three datasets below.
+  - name: wb_ids
+    source: wb_api
+    wb_source: 6               # International Debt Statistics
+    countries: all
+    counterpart_area: WLD      # all creditors
+    start: 1970
+    series:
+      # -- used in the paper
+      - DT.DOD.DPPG.CD         # External debt stocks, PPG (DOD)
+      - DT.TDS.DPPG.CD         # Debt service, PPG (TDS) — IDS carries projections ~8 years ahead
+      - DT.IXA.OFFT.CD         # Interest arrears, official creditors
+      - DT.IXA.PRVT.CD         # Interest arrears, private creditors
+      - DT.AXA.OFFT.CD         # Principal arrears, official creditors
+      - DT.AXA.PRVT.CD         # Principal arrears, private creditors
+      - DT.IXA.DLXF.CD         # Interest arrears, long-term (= official + private)
+      - DT.AXA.DLXF.CD         # Principal arrears, long-term
+      # -- context: totals, composition, flows
+      - DT.DOD.DECT.CD         # External debt stocks, total
+      - DT.TDS.DECT.CD         # Debt service, total
+      - DT.DOD.DLXF.CD         # External debt stocks, long-term
+      - DT.DOD.OFFT.CD         # PPG, official creditors (DOD)
+      - DT.DOD.PRVT.CD         # PPG, private creditors (DOD)
+      - DT.DOD.PBND.CD         # PPG, bonds (DOD)
+      - DT.DOD.PCBK.CD         # PPG, commercial banks (DOD)
+      - DT.INT.DPPG.CD         # Interest payments, PPG
+      - DT.AMT.DPPG.CD         # Principal repayments, PPG
+      - NY.GNP.MKTP.CD         # GNI
+      # -- debt relief and rescheduling
+      - DT.DFR.DPPG.CD         # Debt forgiveness or reduction
+      - DT.AXF.DPPG.CD         # Principal forgiven
+      - DT.IXF.DPPG.CD         # Interest forgiven
+      - DT.DSF.DPPG.CD         # Debt stock reduction
+      - DT.DSB.DPPG.CD         # Debt buyback
+      - DT.DXR.DPPG.CD         # Debt stock rescheduled
+      - DT.TXR.DPPG.CD         # Total amount of debt rescheduled
+      - DT.AXR.DPPG.CD         # Principal rescheduled
+      - DT.IXR.DPPG.CD         # Interest rescheduled (capitalized)
+    note: >
+      World Bank IDS, annual, ~120 low/middle-income countries + aggregates,
+      1970–latest (Dec 2025 release: actuals through 2024). Arrears are stocks
+      ("due but not paid, cumulative"). Countries that became high income
+      (CHL, HUN, KOR, MYS, PAN, POL, RUS, TTO, URY, VEN, BGR…) are absent from
+      the whole history; see wb_ids_archive.
+
+  - name: wb_ids_archive
+    source: wb_api
+    wb_source: 57              # WDI Database Archives (past vintages)
+    start: 1970
+    versions:                  # latest vintage that still carries each country
+      "201906": [BGR, MYS, PAN, RUS, VEN]   # arrears through 2017 (PAN, MYS: arrears only)
+      "201412": [BGR, HUN, MYS, PAN, VEN]   # through 2013
+      "201012": [BGR, CHL, MYS, PAN, RUS, URY, VEN]  # through 2009
+      "200704": [POL, TTO]                  # debt only, through 2005
+      "200304": [KOR, POL, TTO]             # debt only, through 2001
+    series:
+      - DT.DOD.DPPG.CD
+      - DT.TDS.DPPG.CD
+      - DT.IXA.DPPG.CD         # Interest arrears, PPG — current IDS no longer publishes it
+      - DT.AXA.DPPG.CD         # Principal arrears, PPG
+    note: >
+      Graduated countries' PPG debt, debt service and arrears from archived
+      WDI/GDF vintages, verified 2026-09-19. No public vintage has arrears for
+      KOR, POL or TTO. Poland's 1981–94 arrears exist only in the restricted
+      Debtor Reporting System data the paper obtained by request.
+
+  - name: wb_wdi_macro
+    source: wb_api
+    wb_source: 2               # World Development Indicators
+    countries: all
+    start: 1960
+    series:
+      - NY.GDP.MKTP.CD         # GDP, current US$ (denominator for debt ratios)
+      - NY.GDP.MKTP.KD         # GDP, constant 2015 US$ (paper: constant 2010 US$)
+      - NE.CON.TOTL.KD         # Final consumption, constant US$ (paper's do-file)
+      - NE.CON.PRVT.KD         # Household consumption, constant US$ (paper's appendix)
+      - DT.DOD.DPPG.CD         # WDI still carries PPG debt for BGR and RUS
+      - DT.TDS.DPPG.CD
+    note: "WDI macro series paired with IDS for the partial-default panel."
+
+  # ── IMF external-sector datasets (api.imf.org, SDMX 2.1) ─────────────────────
+  # The old dataservices.imf.org API is gone; see src/adapters/imf.py. Keys are
+  # given dimension by dimension in the dataflow's order ("" = all). Codes and
+  # labels verified 2026-09-19; list what exists with:
   #   python wrdsdl.py discover imf --dataset BOP
-  # The five standard components (BPM6) with assets/liabilities split.
-  # Values in USD (UNIT_MULT applied automatically by adapter).
+  # Countries are ISO3 (plus IMF aggregates such as G001 = World). Values in USD.
+
+  # ── IMF BOP: financial account flows + balances ─────────────────────────────
   - name: imf_bop
     source: imf
-    dataset: BOP
-    frequency: A
+    dataflow: BOP
     start: "1980"
     incremental_key: date
-    indicators:
-      # Direct investment
-      - BFDI       # net
-      - BFDIA      # assets (outward)
-      - BFDIL      # liabilities (inward)
-      # Portfolio — equity
-      - BFPIE      # net
-      - BFPIEA     # assets
-      - BFPIEL     # liabilities
-      # Portfolio — debt
-      - BFPID      # net
-      - BFPIDA     # assets
-      - BFPIDL     # liabilities
-      # Other investment (banking/loans/deposits)
-      - BFOI       # net
-      - BFOIA      # assets
-      - BFOIL      # liabilities
-      # Reserve assets
-      - BFRA       # net acquisition
+    lookback_days: 1095      # BOP revises several years back
+    dims:
+      COUNTRY: ""
+      BOP_ACCOUNTING_ENTRY: [NNAFANIL_T, A_NFA_T, L_NIL_T, A_T, NETCD_T]
+      INDICATOR: [D_F, P_F, P_F5, P_F3, O_F, R_F, CAB, KAB, FAB, EO]
+      UNIT: USD
+      FREQUENCY: A
+    label_dims: [BOP_ACCOUNTING_ENTRY, INDICATOR]
+    labels:
+      NNAFANIL_T.D_F: fdi_net            # net acquisition of assets less net incurrence of liabilities
+      A_NFA_T.D_F: fdi_assets
+      L_NIL_T.D_F: fdi_liab
+      NNAFANIL_T.P_F: port_net
+      A_NFA_T.P_F: port_assets
+      L_NIL_T.P_F: port_liab
+      A_NFA_T.P_F5: port_eq_assets       # equity + investment fund shares
+      L_NIL_T.P_F5: port_eq_liab
+      A_NFA_T.P_F3: port_dbt_assets      # debt securities
+      L_NIL_T.P_F3: port_dbt_liab
+      NNAFANIL_T.O_F: other_net
+      A_NFA_T.O_F: other_assets
+      L_NIL_T.O_F: other_liab
+      A_T.R_F: reserves_net              # net acquisition of reserve assets
+      NETCD_T.CAB: ca_balance
+      NETCD_T.KAB: ka_balance
+      NNAFANIL_T.FAB: fa_balance
+      NETCD_T.EO: errors_omissions
     note: >
-      IMF BOP financial account flows, annual, ~180 countries.
-      [VERIFY codes]: python wrdsdl.py discover imf --dataset BOP
-      Look for the INDICATOR dimension codelist.
+      IMF Balance of Payments (BPM6), annual, ~205 economies, 1980–present.
+      Financial account by functional category (assets / liabilities / net) plus
+      current, capital and financial account balances. Portfolio equity/debt
+      nets are not published separately; clean/capital_flows.py derives them.
+      Quarterly data exist too (FREQUENCY: Q, ~157 economies).
 
-  # ── IMF IIP: international investment position (stocks) ───────────────────────
-  # Before first pull, verify indicator codes:
-  #   python wrdsdl.py discover imf --dataset IIP
+  # ── IMF IIP: international investment position (stocks) ─────────────────────
   - name: imf_iip
     source: imf
-    dataset: IIP
-    frequency: A
+    dataflow: IIP
     start: "1980"
     incremental_key: date
-    indicators:
-      # Direct investment
-      - IADIP       # assets
-      - ILDIP       # liabilities
-      # Portfolio — equity
-      - IAPIE       # assets
-      - ILPIE       # liabilities
-      # Portfolio — debt
-      - IAPID       # assets
-      - ILPID       # liabilities
-      # Other investment
-      - IAOI        # assets
-      - ILOI        # liabilities
-      # Reserve assets
-      - IARA        # total
+    lookback_days: 1095
+    dims:
+      COUNTRY: ""
+      BOP_ACCOUNTING_ENTRY: [A_P, L_P, NETAL_P]
+      INDICATOR: [D, P_MV, P_F5_MV, P_F3_MV, O, R, IIP, NIIP]
+      UNIT: USD
+      FREQUENCY: A
+    label_dims: [BOP_ACCOUNTING_ENTRY, INDICATOR]
+    labels:
+      A_P.D: fdi_assets_pos
+      L_P.D: fdi_liab_pos
+      A_P.P_MV: port_assets_pos
+      L_P.P_MV: port_liab_pos
+      A_P.P_F5_MV: port_eq_assets_pos
+      L_P.P_F5_MV: port_eq_liab_pos
+      A_P.P_F3_MV: port_dbt_assets_pos
+      L_P.P_F3_MV: port_dbt_liab_pos
+      A_P.O: other_assets_pos
+      L_P.O: other_liab_pos
+      A_P.R: reserves_pos
+      A_P.IIP: total_assets_pos
+      L_P.IIP: total_liab_pos
+      NETAL_P.NIIP: niip_pos
     note: >
-      IMF IIP (International Investment Position) stocks, annual, ~180 countries.
-      [VERIFY codes]: python wrdsdl.py discover imf --dataset IIP
+      IMF International Investment Position, annual, ~181 economies, 1980–present.
 
-  # ── IMF CPIS: bilateral portfolio investment positions ────────────────────────
+  # ── IMF PIP (formerly CPIS): bilateral portfolio investment positions ───────
   - name: imf_cpis
     source: imf
-    dataset: CPIS
-    frequency: A
+    dataflow: PIP
     start: "2001"
     incremental_key: date
+    lookback_days: 730
+    chunk_by: INDICATOR      # all-in-one request is ~140 MB / 2 min; split it
+    dims:
+      COUNTRY: ""                  # reporter (holder)
+      ACCOUNTING_ENTRY: A          # assets as reported by the holder
+      INDICATOR: [P_TOTINV_P_USD, P_F51_P_USD, P_F3_P_USD, P_F3_L_P_USD, P_F3_S_P_USD]
+      SECTOR: S1                   # all holding sectors
+      COUNTERPART_SECTOR: S1       # all issuing sectors
+      COUNTERPART_COUNTRY: ""      # issuer economy (G001 = World)
+      FREQUENCY: A
+    labels:
+      P_TOTINV_P_USD: portfolio_total
+      P_F51_P_USD: portfolio_equity    # incl. fund shares: equity + debt = total
+      P_F3_P_USD: portfolio_debt
+      P_F3_L_P_USD: portfolio_ltdebt
+      P_F3_S_P_USD: portfolio_stdebt
     note: >
-      IMF Coordinated Portfolio Investment Survey.
-      Bilateral: reporter × counterpart × instrument (equity, LT debt, ST debt).
-      ~75 reporters × ~200 counterparts. Annual, 2001–present.
-      No indicator list needed — adapter pulls all series.
+      IMF Portfolio Investment Positions by Counterpart Economy (the CPIS, renamed).
+      Reporter × issuer economy, annual, 2001–present, ~94 reporters × ~246
+      counterparts. Holder- and issuer-sector breakdowns and currency of
+      denomination (…_DIC_<CCY>_…) are also available; change SECTOR /
+      COUNTERPART_SECTOR / INDICATOR to get them. Non-country reporters:
+      TX093 = SEFER + SSIO (securities held as reserves and by international
+      organizations), TX091 = international organizations; counterpart GX031 =
+      World minus 25 significant financial centers.
 
-  # ── IMF CDIS: bilateral FDI positions ─────────────────────────────────────────
+  # ── IMF DIP (formerly CDIS): bilateral FDI positions ────────────────────────
   - name: imf_cdis
     source: imf
-    dataset: CDIS
-    frequency: A
+    dataflow: DIP
     start: "2009"
     incremental_key: date
+    lookback_days: 730
+    chunk_by: INDICATOR      # all-in-one request is ~175 MB / 11 min; split it
+    dims:
+      COUNTRY: ""                  # reporting economy
+      DV_TYPE: O                   # reported data (SCC = derived from counterparts)
+      INDICATOR: [INWD_D_NETLA_FALL_ALL, OTWD_D_NETAL_FALL_ALL, INWD_D_NETLA_F51_ALL,
+                  OTWD_D_NETAL_F51_ALL, INWD_D_NETLA_FL_ALL, OTWD_D_NETAL_FL_ALL]
+      COUNTERPART_COUNTRY: ""
+      FREQUENCY: A
+    labels:
+      INWD_D_NETLA_FALL_ALL: fdi_inward_total     # directional principle, net
+      OTWD_D_NETAL_FALL_ALL: fdi_outward_total
+      INWD_D_NETLA_F51_ALL: fdi_inward_equity
+      OTWD_D_NETAL_F51_ALL: fdi_outward_equity
+      INWD_D_NETLA_FL_ALL: fdi_inward_debt
+      OTWD_D_NETAL_FL_ALL: fdi_outward_debt
     note: >
-      IMF Coordinated Direct Investment Survey.
-      Bilateral: reporter × counterpart, inward and outward positions.
-      Annual, 2009–present.
-      No indicator list needed — adapter pulls all series.
+      IMF Direct Investment Positions by Counterpart Economy (the CDIS, renamed).
+      Reporter × counterpart economy, annual, 2009–present, ~143 reporters.
+      Counterpart TX983 = not specified (incl. confidential).
 
   # ── Government bond yields 10Y (Datastream economic series) ─────────────────
   # Source: tr_ds_econ.wrds_ecoinfo + ecodata (IMF IFS + Datastream national sources).
@@ -579,7 +712,7 @@ datasets:
     source: wrds_ds_econ
     start: "1950-01-01"
     incremental_key: date_
-    lookback_days: 730      # quarterly, late reporters + revisions
+    lookback_days: 365      # monthly, ragged edge
     mnemonics:
       # United States
       - USTRCN10   # Treasury constant maturity 10Y (1953–present)
@@ -647,7 +780,7 @@ datasets:
     source: wrds_ds_econ
     start: "1950-01-01"
     incremental_key: date_
-    lookback_days: 365      # monthly, ragged edge
+    lookback_days: 365      # late reporters trail by up to ~8 months
     mnemonics:
       - AFI64...F  # AFGHANISTAN (2004-03 to 2025-01)
       - ALI64...F  # ALBANIA (1991-01 to 2026-05)
@@ -839,7 +972,7 @@ datasets:
     source: wrds_ds_econ
     start: "1970-01-01"
     incremental_key: date_
-    lookback_days: 365      # late reporters trail by up to ~8 months
+    lookback_days: 730      # quarterly, late reporters + revisions
     mnemonics:
       # --- ca (BOP: CURRENT ACCOUNT) [121 countries] ---
       - AFI109BXF  # AFGHANISTAN (2008-04 to 2021-01)

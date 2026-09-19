@@ -1,15 +1,15 @@
-﻿"""
+"""
 Clean IMF CPIS and CDIS bilateral position data.
 
 CPIS — Coordinated Portfolio Investment Survey
   Who (reporter) holds what (instrument) issued by whom (counterpart).
-  ~75 reporters × ~200 counterparts, annual, 2001–present.
+  ~94 reporters × ~246 counterparts, annual, 2001–present (IMF dataflow PIP).
   Instruments: total, equity, long-term debt, short-term debt.
 
 CDIS — Coordinated Direct Investment Survey
   Who (reporter) has direct investment in/from whom (counterpart).
   Inward (liabilities) and outward (assets) positions.
-  Annual, 2009–present.
+  ~143 reporters, annual, 2009–present (IMF dataflow DIP).
 
 Output format: long Parquet with columns
   (year, reporter, counterpart, indicator, value)
@@ -37,23 +37,11 @@ import pandas as pd
 
 DEFAULT_OUTPUT = "macrodata/bilateral"
 
-# Human-readable labels for common CPIS/CDIS indicator codes.
-# Run `python wrdsdl.py discover imf --dataset CPIS` to see all available codes.
-CPIS_LABELS: dict[str, str] = {
-    "I_A_T":   "portfolio_total",
-    "I_A_EQ":  "portfolio_equity",
-    "I_A_LTD": "portfolio_ltdebt",
-    "I_A_STD": "portfolio_stdebt",
-}
-
-CDIS_LABELS: dict[str, str] = {
-    "II_T":  "fdi_inward_total",
-    "OI_T":  "fdi_outward_total",
-    "II_EQ": "fdi_inward_equity",
-    "OI_EQ": "fdi_outward_equity",
-    "II_DI": "fdi_inward_debt",
-    "OI_DI": "fdi_outward_debt",
-}
+# Indicator labels (portfolio_total, fdi_inward_total, ...) are assigned by the
+# adapter from `labels:` in datasets.yaml; the IMF now publishes CPIS as PIP and
+# CDIS as DIP on api.imf.org. Counterpart G001 is the world total.
+CPIS_LABELS: dict[str, str] = {}
+CDIS_LABELS: dict[str, str] = {}
 
 
 def parse_args() -> argparse.Namespace:
@@ -81,9 +69,9 @@ def load_bilateral(dataset_name: str, storage_root: str, labels: dict[str, str])
     rename = {}
     for c in df.columns:
         u = c.upper()
-        if u == "REF_AREA" and "reporter" not in df.columns:
+        if u in ("COUNTRY", "REF_AREA") and "reporter" not in df.columns:
             rename[c] = "reporter"
-        elif u in ("COUNTERPART_AREA", "CPART_AREA") and "counterpart" not in df.columns:
+        elif u in ("COUNTERPART_COUNTRY", "COUNTERPART_AREA", "CPART_AREA") and "counterpart" not in df.columns:
             rename[c] = "counterpart"
         elif u == "INDICATOR" and "indicator" not in df.columns:
             rename[c] = "indicator"

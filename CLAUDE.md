@@ -66,7 +66,27 @@ Datastream futures term structure from individual contracts. Config: `dsmnem_pre
 FRED, World Bank, or local file. Config: `provider` (`fred`/`worldbank`/`file`), `series_id`/`indicator`/`path`. No WRDS connection needed.
 
 ### imf
-IMF SDMX API. Config: `dataset` (BOP/IIP/CPIS/CDIS), `frequency`, `indicators`. No WRDS connection needed. **Blocked on some institutional networks** — `dataservices.imf.org` must be reachable.
+IMF data API at `api.imf.org` (SDMX 2.1 data, SDMX 3.0 structure), no key, no WRDS connection. **The old `dataservices.imf.org` SDMX-JSON service is dead** (host does not resolve) and its IFS-style codes (`BFDI`, `IADIP`, …) no longer exist — verified 2026-09-19. Config: `dataflow` (IMF.STA id), `dims` (the full series key, one entry per dimension **in the dataflow's key order**; `""` = all, list = OR), optional `labels` + `label_dims` (map code combinations to output labels; unlisted combinations are dropped), optional `chunk_by` (one request per code of that dimension). Data URL: `https://api.imf.org/external/sdmx/2.1/data/IMF.STA,{FLOW}/{KEY}?startPeriod=YYYY&detail=dataonly` with `Accept: application/vnd.sdmx.data+csv;version=1.0.0`. Output: `date, country (ISO3), indicator, value` + other dimensions lower-cased.
+
+Dataflows (key order): `BOP` and `IIP` = `COUNTRY.BOP_ACCOUNTING_ENTRY.INDICATOR.UNIT.FREQUENCY`; `PIP` (**CPIS renamed**) = `COUNTRY.ACCOUNTING_ENTRY.INDICATOR.SECTOR.COUNTERPART_SECTOR.COUNTERPART_COUNTRY.FREQUENCY`; `DIP` (**CDIS renamed**) = `COUNTRY.DV_TYPE.INDICATOR.COUNTERPART_COUNTRY.FREQUENCY`. 222 dataflows in total (IL, MFS_*, CPI, ER, GFS_*, QNEA, WEO under agency `IMF.RES`, …); list them at `https://api.imf.org/external/sdmx/3.0/structure/dataflow`.
+
+Gotchas:
+- **Codes are split across two dimensions.** BOP FDI assets is `A_NFA_T` (accounting entry) × `D_F` (indicator); net is `NNAFANIL_T`; reserves use `A_T`; balances (`CAB`, `KAB`, `EO`) use `NETCD_T`. IIP positions use `A_P`/`L_P`/`NETAL_P` with indicators `D`, `P_MV`, `P_F5_MV`, `P_F3_MV`, `O`, `R`, `IIP`, `NIIP`. Portfolio equity/debt have no published net.
+- **`OBS_VALUE` is in units** (USD), not scaled; `SCALE` is a display hint.
+- `detail=dataonly` still returns ~50 attribute columns, but empty — ~10× smaller. Rows with no `TIME_PERIOD` (series without observations) must be dropped.
+- SDMX-CSV 1.0 without `dataonly` is enormous: PIP for the US alone since 2022 = 291 MB.
+- Speed: BOP all countries ~2–100 s, IIP ~40 s, PIP ~5 min, DIP ~12 min — hence `chunk_by: INDICATOR` for PIP/DIP.
+- The 3.0 `c[TIME_PERIOD]` filter is ignored; use 2.1 `startPeriod`. Availability/constraint endpoints are not exposed (404/500), so `discover` samples one country (`USA`) to list codes that actually carry data.
+- `data.imf.org` and the DataMapper API (`www.imf.org/external/datamapper/api`) return Akamai 403 to scripts.
+- PIP `P_F51_P_USD` ("Equity") already includes fund shares: equity + debt = `P_TOTINV_P_USD`. Counterpart `G001` = World.
+- Non-ISO codes live in dataflow-specific codelists (`CL_PIP_COUNTRY`, `CL_DIP_COUNTRY`): PIP reporter `TX093` = SEFER + SSIO (reserve + international-organization holdings, ~$5.6tn — exclude from country sums), `TX091` = international organizations, counterpart `GX031` = World minus 25 financial centers; DIP counterpart `TX983` = not specified/confidential.
+
+### wb_api
+World Bank API v2 multidimensional endpoint: `https://api.worldbank.org/v2/sources/{src}/country/{c}/series/{s}[/counterpart-area/{a}][/version/{v}]/time/all?format=json`. Config: `wb_source`, `series`, `countries` (`all` or list), `counterpart_area` (IDS: `WLD`), `versions` (source 57: `{vintage: [countries]}`), `start`. Output: `date, country, country_name, is_aggregate, series, value, wb_source, version, counterpart_area`. One request per series, so a bad code fails alone. **Needed for International Debt Statistics (source 6)**: the plain `/country/{c}/indicator/{s}` endpoint (pandas_datareader, `external` adapter) answers "indicator not found" for IDS-only series such as arrears.
+
+IDS facts (verified 2026-09-19): Dec 2025 release, actuals through 2024, **`DT.TDS.*` debt service includes projections to 2032** — trim to the last `DT.DOD.DPPG.CD` year. Covers ~120 low/middle-income countries; **countries that graduate to high income vanish from the entire history** (CHL, HUN, KOR, MYS, PAN, POL, RUS, TTO, URY, VEN, BGR). For those use source 57 (WDI Database Archives, 142 vintages 198904–202607): PPG arrears `DT.{I,A}XA.DPPG.CD` are filled only up to vintage 201906 (BGR/MYS/PAN/RUS/VEN through 2017; HUN via 201412; CHL/URY via 201012). No public vintage has arrears for KOR, POL, TTO (debt stocks only: KOR via 200304, POL/TTO via 200704). Current WDI (source 2) still carries PPG debt/service for BGR and RUS. Arrears by creditor: `DT.{I,A}XA.{OFFT,PRVT}.CD` sum to `DT.{I,A}XA.DLXF.CD` (long-term); they match archived PPG arrears to 0.1% in aggregate. Arrears are **stocks** (cumulative due-but-unpaid).
+
+**Partial default (Arellano, Mateos-Planas & Ríos-Rull, JPE 2023):** `clean/partial_default.py` rebuilds it from `wb_ids` + `wb_ids_archive` + `wb_wdi_macro`, following the replication do-file (Dataverse doi:10.7910/DVN/GXA5UX): arrears = the four creditor-split series (missing = 0), `paydue = arrears + PPG debt service` (both rowtotal), `partial_default = arrears/paydue`, in default if > 1%. Their PPG arrears came from a restricted Debtor Reporting System request and spreads from the Global Financial Database (EMBI+) — neither is public. On the 37-country 1970–2019 sample this data gives frequency 34% (paper 36%), conditional mean 33% (38%), SD 24% (22%), 63 episodes (70), debt service/GDP 3.6% (3.6%).
 
 ### imf_weo
 IMF World Economic Outlook bulk download. Config: `year`, `edition` (1=April, 2=October), `subjects` (list of WEO subject codes), `start`. No WRDS connection needed. Downloads from `https://www.imf.org/-/media/Files/Publications/WEO/WEO-Database/{year}/{Month}/WEO{Mon}{year}all.xls`. File is UTF-16 LE tab-delimited (not real Excel, despite .xls extension). Cached at `downloads/imf_weo/`. Subject codes as of Oct 2024: `GGR_NGDP`, `GGX_NGDP`, `GGXCNL`, `GGXONLB`, `GGXWDG`, `GGXWDN`, `NGDPD`, `NGDP_RPCH`, `PCPIPCH`, `BCA_NGDPD`, `LUR`. **Note: older editions (before ~2022) used different codes: `GGREV`/`GGEXP`/`GGPB` instead of `GGR_NGDP`/`GGX_NGDP`/`GGXONLB`.** Output: `date, country, subject_code, subject_descriptor, units, value`.
@@ -159,6 +179,10 @@ Every adapter receives `watermark` (a date string like `"2024-01-15"` or `None` 
 wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= '{start}'"
 ```
 
+**Lookback.** The watermark is the max date across *all* series, so a panel with a ragged edge (CPI, BOP, bond yields, equity indices on the last trading day) would never get its late reporters. `do_pull` therefore subtracts `lookback_days` from the watermark before calling the adapter (default 14 in `defaults:`; 365–730 for the monthly/quarterly panels; `0` for `imf_weo`, which is vintage-based). Verified 2026-09-19: without it, CPI June 2026 was stuck at 44 of ~150 countries and `fx_forward` 2026-07-22 at 3 of 69 series.
+
+**Storage merge.** Each year partition is a single `year=YYYY/part-0.parquet`. A full pull overwrites the partitions it touches; an incremental pull (`append=True`) reads the partition, drops stored rows dated on/after the chunk's first date, and appends the chunk. This makes the lookback overlap, inclusive-start adapters (`bis` startPeriod, FRED `observation_start`, `msci_web`) and re-runs after a crash all safe. **Before 2026-09-19 the incremental path overwrote the partition with just the new rows** — it never fired only because every dataset had been full-pulled once.
+
 ---
 
 ## Known missing data
@@ -168,7 +192,7 @@ wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= 
 - **Bloomberg Commodity Index (BCOM)** — not found in `tr_ds_comds`.
 - **NYMEX WTI continuous series** (`NCLCS00`) — not on WRDS at all. Use `ds_wti_curve` (nearby 1–12 built from individual contracts) instead.
 - **NYMEX WTI futures stop 2026-04-03** — every `NWS` and `NCL` contract in `tr_ds_fut.wrds_fut_contract` has its last price on 2026-04-03 (verified 2026-09-19), so `ds_wti_curve` is frozen there. Source-side outage, not a prefix problem. ICE Brent (`LLC`) is current; front-month WTI (`ds_wti_front`, `CRUDOIL`) and FRED WTI spot are also current.
-- **IMF SDMX host** — `dataservices.imf.org` fails DNS resolution (not just a firewall block) as of 2026-09-19; the `imf_*` datasets have never been pulled.
+- **Arrears for KOR, POL, TTO** — not in any public World Bank vintage; Poland's 1981–94 arrears exist only in the restricted Debtor Reporting System. EMBI+ spreads used by the partial-default paper are from the Global Financial Database (proprietary).
 - **World Bank indicators** `GC.REV.TOTL.GD.ZS` ("invalid value") and `GC.BAL.CASH.GD.ZS` ("deleted or archived") return nothing, so `wb_govt_revenue_pct` and `wb_fiscal_balance_pct` have no data.
 - **Brent individual contract prefix** confirmed as `LLC` (verified 2026-06-25). Dead prefix `LBZCS` also exists but ends ~2005.
 - **Brazil equity mnemonic** `D2BRFS$` is DJGL Brazil Financial Services, not IBOVESPA. To fix: find the IBOVESPA mnemonic in `ds2equityindex` and update `config/datasets.yaml`. The `MNEMONIC_TO_ISO2` dict in `clean/equity_indices.py` maps this to `BR` regardless — once the mnemonic is corrected in datasets.yaml and data is re-pulled, the BR column will automatically map to the correct index.
@@ -179,10 +203,6 @@ wm_clause = f"AND date_col > '{watermark}'" if watermark else f"AND date_col >= 
 - **CFTC `EURO FX` code 099741 pre-1999** — carries 10 observations from 1986-01-15 to 1986-08-29 that are the **European Currency Unit (ECU)** contract, then a 12-year gap before the euro contract starts 1999-01-05. Different instrument; `clean/cftc_fx.py` drops them. Do not splice into a EUR series.
 - **CFTC New Zealand dollar** — searching for `NEW ZEALAND` in `contract_market_name` returns nothing; the contract (code `112741`) is named `NZ DOLLAR` there across all history. Full TFF history runs 2006-06-13–present.
 - **Germany / UK 10Y bond yields** — `BDGBOND.` (DE) and `UKMEDYLD` (UK) both end 2019-09 in `tr_ds_econ`. Datastream stopped updating these series. Current DE/UK yields need an alternative source (e.g. ECB, BoE, or FRED).
-
-**Lookback.** The watermark is the max date across *all* series, so a panel with a ragged edge (CPI, BOP, bond yields, equity indices on the last trading day) would never get its late reporters. `do_pull` therefore subtracts `lookback_days` from the watermark before calling the adapter (default 14 in `defaults:`; 365–730 for the monthly/quarterly panels; `0` for `imf_weo`, which is vintage-based). Verified 2026-09-19: without it, CPI June 2026 was stuck at 44 of ~150 countries and `fx_forward` 2026-07-22 at 3 of 69 series.
-
-**Storage merge.** Each year partition is a single `year=YYYY/part-0.parquet`. A full pull overwrites the partitions it touches; an incremental pull (`append=True`) reads the partition, drops stored rows dated on/after the chunk's first date, and appends the chunk. This makes the lookback overlap, inclusive-start adapters (`bis` startPeriod, FRED `observation_start`, `msci_web`) and re-runs after a crash all safe. **Before 2026-09-19 the incremental path overwrote the partition with just the new rows** — it never fired only because every dataset had been full-pulled once.
 
 ---
 
