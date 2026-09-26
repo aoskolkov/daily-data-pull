@@ -1,0 +1,2651 @@
+defaults:
+  storage_root: ./data
+  output_format: parquet
+  chunk_rows: 500_000
+  # Incremental pulls re-fetch this many days before the watermark, to pick up
+  # late reporters and revisions. Override per dataset for lagging panels.
+  lookback_days: 14
+
+datasets:
+  # ── FX spot rates ───────────────────────────────────────────────────────────
+  - name: fx_spot
+    source: wrds_sql
+    library: comp
+    table: exrt_dly
+    fields: [datadate, fromcurd, tocurd, exratd]
+    incremental_key: datadate
+    partition_by: [year]
+    note: >
+      Compustat daily FX spot rates. fromcurd is typically GBP (anchor), not USD.
+      clean/fx_spot.py detects the anchor and converts to local/USD via cross-rate.
+
+  # ── FX forward rates (Datastream via WRDS) ─────────────────────────────────
+  # Source: tr_ds_equities.ds2fxcode joined to ds2fxrate (LSEG Datastream).
+  # 1578 rate codes; forward tenors: 1W, 1M, 3M, 6M, 9M, 1Y, 2Y, ... 20Y.
+  # Data runs 1964-12-30 to present. No currency filter: ~700 of the ~1570 codes
+  # are crosses not involving USD (vs EUR, GBP, CHF, ...).
+  # Output: long format with columns exratedate, fromcurrcode, tocurrcode,
+  #         ratetypecode, exratedesc, midrate, bidrate, offerrate.
+  # midrate = units of fromcurrcode per 1 unit of tocurrcode (per 100/1,000/10,000
+  #   when exratedesc says "TO 100 ..." etc.).
+  - name: fx_forward
+    source: wrds_fx
+    start: "1964-12-30"
+    incremental_key: exratedate
+    note: >
+      All FX rates (spot + all forward tenors, all currencies) from LSEG Datastream
+      via WRDS tr_ds_equities.ds2fxcode + ds2fxrate. 1578 rate codes, 1964–present.
+      Tenors: SPOT, ONFD, TNFD, SNFD, 1WFD, 2WFD, 3WFD, 1MFD–11MF, 15MF, 18MF, 21MF, 30MF,
+      1YFD–10YF, 12YF, 15YF, 20YF, plus CNH offshore codes (OS*, O10M, O11M, O18M).
+      Includes non-USD crosses. Raw midrate = units of fromcurrcode per 1 (or per
+      100/1,000/10,000, see exratedesc) unit of tocurrcode.
+      clean/fx_forward.py normalises to USD per unit of currency.
+
+  # ── WTI crude spot (Datastream commodities) ─────────────────────────────────
+  # NCLCS00 is a Datastream terminal mnemonic NOT available on WRDS (verified 2026-06-25).
+  # WRDS has WTI spot via tr_ds_comds: CRUDOIL (Cushing WTI) and EIACRWT (EIA WTI).
+  - name: ds_wti_front
+    source: datastream
+    mnemonic: CRUDOIL
+    start: "1986-01-01"
+    incremental_key: date_
+    note: >
+      WTI crude oil spot price at Cushing via Datastream commodities (tr_ds_comds).
+      Mnemonic: CRUDOIL = "Crude Oil-West Texas Intermediate Spot Cushing USD/BBL".
+      Daily. Units: USD/barrel. Cross-check vs fred_wti_spot.
+      Note: NCLCS00 (Datastream continuous contract) is NOT available on WRDS.
+
+  # ── WTI futures term structure (NYMEX nearby contracts) ────────────────────
+  # NCLCS00 continuous series is NOT available on WRDS (verified 2026-06-25).
+  # Instead, use wrds_fut adapter: builds nearby 1-12 from individual NWS* contracts
+  # in tr_ds_fut.wrds_contract_info + tr_ds_fut.wrds_fut_contract.
+  # The adapter ranks by lasttrddate per day to assign nearby position.
+  - name: ds_wti_curve
+    source: wrds_fut
+    dsmnem_prefix: NWS       # NYMEX WTI contracts (NWS{MMYY})
+    currency: USD
+    max_nearby: 12
+    price_col: settlement
+    start: "1990-01-01"
+    incremental_key: date_
+    note: >
+      NYMEX WTI crude oil futures term structure, nearby 1-12, from individual
+      contracts (NWS{MMYY}) in WRDS Datastream tr_ds_fut library.
+      STALE: WRDS stopped updating all NWS and NCL contracts after 2026-04-03.
+      Output: long format with columns date_, nearby (1-12), price, contrdate, lasttrddate.
+      clean/oil_curve.py pivots to wide (tenor columns F1-F12) and computes
+      slope/spreads. Units: USD/barrel.
+
+  # ── Brent futures term structure (ICE nearby contracts) ─────────────────────
+  # Active ICE Brent individual contracts use prefix LLC (verified 2026-06-25);
+  # data runs 2003-09-08 to present. LLC matches ~5 listings per contract month;
+  # the wrds_fut adapter keeps one row per (date, last trading day), so nearby
+  # 1-12 are 12 distinct contract months.
+  # Known dead prefix: LBZCS (ICE-BRENT CRUDE OIL NX), LBZCS00-LBZCS05 discontinued.
+  # To list other Brent prefixes: python wrdsdl.py discover tr_ds_fut --table wrds_contract_info
+  #   then: SELECT DISTINCT LEFT(dsmnem,3), contrname FROM wrds_contract_info
+  #          WHERE UPPER(contrname) LIKE '%BRENT%' AND isocurrcode='USD' LIMIT 20
+  - name: ds_brent_curve
+    source: wrds_fut
+    dsmnem_prefix: LLC       # ICE Brent "CRUDE OIL (BRENT)" contracts, verified 2026-06-25
+    currency: USD
+    max_nearby: 12
+    price_col: settlement
+    start: "1990-01-01"
+    incremental_key: date_
+    note: >
+      ICE Brent crude oil futures term structure, nearby 1-12, from individual
+      contracts (LLC{MMYY}) in WRDS Datastream tr_ds_fut library.
+      Prefix LLC = "CRUDE OIL (BRENT)", USD, 426 contracts through 2039.
+      Alternative prefixes available: NBR (LST DAY, 319 contracts to 2034).
+      Structure mirrors ds_wti_curve. Units: USD/barrel.
+
+  # ── WTI crude (FRED — sanity check / gap fill) ─────────────────────────────
+  - name: fred_wti_spot
+    source: external
+    provider: fred
+    series_id: DCOILWTICO
+    start: "1986-01-02"
+    note: >
+      WTI crude spot price (Cushing, OK) from FRED/EIA. Daily.
+      Requires: pip install pandas-datareader
+      Use to cross-check ds_wti_front and fill gaps.
+
+  # ── Volatility ───────────────────────────────────────────────────────────────
+  # VIX family from FRED (all free, daily)
+  - name: vix
+    source: external
+    provider: fred
+    series_id: VIXCLS
+    start: "1990-01-02"
+    incremental_key: date
+    note: "CBOE VIX: 30-day risk-neutral vol of S&P 500. Daily."
+
+  # [BROKEN] VXST discontinued by CBOE 2018-03-27; FRED series no longer accessible
+  # via pandas_datareader CSV endpoint. Historical data ends 2018-03-27.
+  # To pull manually: wget https://www.cboe.com/us/options/market_statistics/historical_data/
+  # and use the file provider.
+  # - name: vix9d
+  #   source: external
+  #   provider: fred
+  #   series_id: VXST
+  #   start: "2011-01-03"
+
+  - name: vix3m
+    source: external
+    provider: fred
+    series_id: VXVCLS
+    start: "2007-12-04"
+    incremental_key: date
+    note: "CBOE 3-Month VIX (VXV / VXVCLS). Daily."
+
+  # [VERIFY] VXMT and VVIXCLS fail via pandas_datareader CSV endpoint.
+  # FRED may require API key for CBOE-licensed series, or IDs have changed.
+  # Try: curl "https://fred.stlouisfed.org/graph/fredgraph.csv?id=VXMT" to check.
+  # Alternative: download directly from CBOE and use file provider.
+  # - name: vix6m
+  #   source: external
+  #   provider: fred
+  #   series_id: VXMT
+
+  # - name: vvix
+  #   source: external
+  #   provider: fred
+  #   series_id: VVIXCLS
+
+  # ── Inflation: CPI level (World Bank) ───────────────────────────────────────
+  - name: wb_cpi
+    source: external
+    provider: worldbank
+    indicator: FP.CPI.TOTL
+    start: "1960"
+    note: >
+      World Bank CPI index (2010=100), ~180 countries, annual.
+      Requires: pip install pandas-datareader
+      clean/inflation.py normalizes and pivots to wide.
+
+  # ── Inflation: CPI % change (World Bank) ────────────────────────────────────
+  - name: wb_inflation
+    source: external
+    provider: worldbank
+    indicator: FP.CPI.TOTL.ZG
+    start: "1960"
+    note: >
+      World Bank annual CPI inflation rate (%), ~180 countries.
+      Requires: pip install pandas-datareader
+
+  # ── Inflation: CPI monthly (OECD) ───────────────────────────────────────────
+  # [BROKEN] OECD migrated from stats.oecd.org to data-explorer.oecd.org in 2024.
+  # pandas_datareader's OECD reader hits the old endpoint (now returns 404).
+  # Fix: implement a direct SDMX REST adapter for the new OECD API.
+  # New endpoint: https://sdmx.oecd.org/public/rest/data/
+  # Dataset for CPI: OECD.SDD.STES,DSD_KEI@DF_KEI,4.0/...CPALTT01...M...
+  # - name: oecd_cpi
+  #   source: external
+  #   provider: oecd
+  #   dataset: CPI      # old ID, broken
+
+  # ── US Treasury TIC: foreign holdings of US Treasuries ───────────────────────
+  # Monthly, by country, from 2000-03. Holdings in billions of USD.
+  # Released with ~45-day lag. Source: US Treasury TIC system.
+  # Covers the major holders listed each month (19-45 countries, median 35; only 20
+  # for 2026 months, which come from the SLT table alone). The "All Other" residual,
+  # totals and memo rows are dropped by the adapter.
+  - name: tic_foreign_holders
+    source: tic
+    start: "2000-01-01"
+    incremental_key: date
+    lookback_days: 365      # SLT table revises the trailing 12 months
+    note: >
+      US Treasury Major Foreign Holders of Treasury Securities.
+      Monthly, ~20-45 countries (median 35), USD billions, 2000-03–present.
+      Source: treasury.gov mfhhis01.txt (archive) + ticdata.treasury.gov
+      slt_table5.txt (rolling 13 months), updated monthly.
+
+  # ── BIS central bank policy rates ───────────────────────────────────────────
+  # Daily, 48 countries (ISO2) + XM (Eurozone), from 1946 (GB, JP, CH, ...) / 1990s (most EM).
+  # BIS WS_CBPOL key: FREQ.REF_AREA — just 2 dimensions.
+  # Use period_format: daily so startPeriod is sent as YYYY-MM-DD (not YYYY-Q#).
+  - name: bis_cbpol
+    source: bis
+    dataflow: WS_CBPOL
+    key: "D."
+    start: "1946-01-01"
+    period_format: daily
+    incremental_key: date
+    note: >
+      BIS central bank policy rates, daily, 48 countries + Eurozone (XM).
+      Source: BIS Statistics API (stats.bis.org) dataflow WS_CBPOL.
+      Countries: AR AU BR CA CH CL CN CO CZ DK GB HK HU ID IL IN IS JP KR KW
+        MA MK MX MY NO NZ PE PH PL RO RS RU SA SE TH TR US XM ZA, plus pre-euro
+        national rates AT BE DE ES FR IT NL PT (to 1998-12), GR (to 2000-12), HR (to 2022-07).
+      History: GB JP CH DK SE IN and most pre-euro members from 1946, DE 1948,
+        US 1954-07, CA 1960; EM mostly from 1990s–2000s.
+      clean/interest_rates.py pivots to wide (date × country ISO2).
+
+  # ── BIS international debt securities outstanding ────────────────────────────
+  # Quarterly, 1993-Q1 to present, ~155 issuer countries by nationality / ~158 by
+  # residence (plus regional aggregates). Securities issued outside the issuer's
+  # local market, by issuer residence (ISSUER_RES) and nationality (ISSUER_NAT).
+  # Dimensions (15): FREQ.ISSUER_RES.ISSUER_NAT.ISSUER_BUS_IMM.ISSUER_BUS_ULT.
+  #   MARKET.ISSUE_TYPE.ISSUE_CUR_GROUP.ISSUE_CUR.ISSUE_OR_MAT.ISSUE_RE_MAT.
+  #   ISSUE_RATE.ISSUE_RISK.ISSUE_COL.MEASURE
+  # Key below: Q, all residences/nationalities/sectors, market=C (international
+  #   markets), type=A (all), all currency groups, cur=TO1 (total), original and
+  #   remaining maturity A (all), rate/risk/collateral A (all), measure=I
+  #   (amounts outstanding). Blank = wildcard; "A" is a literal code, not "all".
+  #   Until 2026-09-19 the key had ISSUE_OR_MAT=C (short-term) and MEASURE=C
+  #   (gross issues), i.e. quarterly issuance of short-term paper only.
+  # Codes: python wrdsdl.py discover bis --dataset WS_DEBT_SEC2_PUB
+  - name: bis_debt_sec
+    source: bis
+    dataflow: WS_DEBT_SEC2_PUB
+    key: Q.....C.A..TO1.A.A.A.A.A.I
+    start: "1993-01-01"
+    incremental_key: date
+    lookback_days: 365      # quarterly revisions
+    note: >
+      BIS international debt securities, amounts outstanding, all maturities,
+      quarterly. Source: BIS Statistics API (stats.bis.org) dataflow WS_DEBT_SEC2_PUB.
+      Amounts in USD millions (unit_measure=USD, unit_mult=6). Rows come in both
+      views: ISSUER_NAT=3P ("all countries excluding residents") with a country
+      ISSUER_RES gives the by-residence series, and the reverse the by-nationality
+      series; each is split by issuer sector (ISSUER_BUS_*: 1 = all) and currency
+      group (A = all, D = domestic, F = foreign), so totals are single rows.
+
+  # ── BIS locational banking statistics (LBS) ──────────────────────────────────
+  # Quarterly. Cross-border bank claims and liabilities by reporting country.
+  # Dimensions (8): FREQ.L_MEASURE.L_POSITION.L_INSTR.L_DENOM.L_CURR_TYPE.L_PARENT_CTY.L_REP_BANK_TYPE
+  # Key below: quarterly stocks (S), claims (C), all instruments (A),
+  #   all currencies USD-equiv (TO1), all counterpart types (A),
+  #   all counterpart countries aggregated (5J), all bank types (A).
+  # Gives one series per reporting banking system — ~50 countries.
+  - name: bis_lbs
+    source: bis
+    dataflow: WS_LBS_D_PUB
+    key: Q.S.C.A.TO1.A.5J.A
+    start: "2000-01-01"
+    incremental_key: date
+    lookback_days: 365      # quarterly revisions
+    note: >
+      BIS Locational Banking Statistics, total cross-border claims by reporting country.
+      Quarterly, ~50 reporting countries, USD millions.
+      Dimensions probed live 2026-06-28: FREQ.L_MEASURE.L_POSITION.L_INSTR.L_DENOM.L_CURR_TYPE.L_PARENT_CTY.L_REP_BANK_TYPE
+      Key Q.S.C.A.TO1.A.5J.A = stocks/outstanding, claims (assets), all instruments,
+      all-currency total, all counterpart types, all counterpart countries aggregated,
+      all bank types. Use discover mode to explore liability-side (C→L) or specific
+      counterpart breakdown (5J→specific country code).
+
+  # ── BIS effective exchange rates ─────────────────────────────────────────────
+  # Monthly real (CPI-adjusted) EER, broad basket, and nominal EER, narrow basket.
+  # Dimensions: FREQ.EER_TYPE.EER_BASKET.REF_AREA
+  #   EER_TYPE: R=real, N=nominal
+  #   EER_BASKET: B=broad (64 economies in the data, from 1994), N=narrow (26-27 economies, from 1964)
+  #   REF_AREA: blank (trailing dot) = all reporting economies; "A" is not a wildcard
+  # Index: 2020=100. Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
+  - name: bis_eer_real
+    source: bis
+    dataflow: WS_EER
+    key: "M.R.B."
+    start: "1994-01-01"
+    period_format: monthly
+    incremental_key: date
+    lookback_days: 62       # monthly
+    note: >
+      BIS real effective exchange rates (REER), broad basket (64 economies), monthly.
+      CPI-deflated. Index 2020=100. All countries with available data.
+      Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
+      Key: FREQ.EER_TYPE.EER_BASKET.REF_AREA — trailing dot = wildcard (all countries).
+
+  - name: bis_eer_nominal
+    source: bis
+    dataflow: WS_EER
+    key: "M.N.N."
+    start: "1964-01-01"
+    period_format: monthly
+    incremental_key: date
+    lookback_days: 62       # monthly
+    note: >
+      BIS nominal effective exchange rates (NEER), narrow basket (27 economies), monthly.
+      Index 2020=100. Narrow basket has longer history from 1964 vs broad (1994).
+      Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
+
+  # ── MSCI Standard country equity indices ─────────────────────────────────────
+  # Monthly, USD gross total return + price index levels.
+  # 45 countries (Russia excluded — MSCI suspended Feb 2022; endpoint returns HTTP 500).
+  # Data via MSCI's public webapp endpoint (no API key required).
+  - name: msci_indices
+    source: msci_web
+    start: "1990-01-01"
+    frequency: M
+    incremental_key: date
+    lookback_days: 62       # monthly
+
+  # ── IMF World Economic Outlook ────────────────────────────────────────────────
+  # Biannual (April + October). ~190 countries from ~1980 + 5-year projections.
+  # Best free source for fiscal aggregates (revenue, expenditure, primary balance,
+  # gross/net debt % GDP) and macro projections.
+  # Update year/edition after each IMF release (April=1, October=2).
+  - name: imf_weo
+    source: imf_weo
+    year: 2024
+    edition: 2        # 1=April, 2=October
+    start: "1980"
+    incremental_key: date
+    lookback_days: 0        # vintage-based; change year/edition and `refresh` instead
+    subjects:
+      # GDP
+      - NGDPD        # GDP current USD (billions)
+      - NGDP_RPCH    # Real GDP growth (%)
+      # Inflation
+      - PCPIPCH      # CPI inflation (%)
+      # Fiscal  (codes as of Oct 2024 WEO; older editions used GGREV/GGEXP/GGPB)
+      - GGR_NGDP     # General govt revenue (% GDP)
+      - GGX_NGDP     # General govt total expenditure (% GDP)
+      - GGXCNL_NGDP  # General govt net lending/borrowing = fiscal balance (% GDP)
+      - GGXONLB_NGDP # General govt primary net lending/borrowing (% GDP)
+      - GGXWDG_NGDP  # General govt gross debt (% GDP)
+      - GGXWDN_NGDP  # General govt net debt (% GDP)
+      # Same four in levels: national currency, billions (not comparable across countries)
+      - GGXCNL
+      - GGXONLB
+      - GGXWDG
+      - GGXWDN
+      # External
+      - BCA_NGDPD    # Current account balance (% GDP)
+      - LUR          # Unemployment rate (%)
+    note: >
+      IMF World Economic Outlook database, Oct 2024 edition.
+      Covers ~190 countries, 1980–2029 (incl. IMF projections beyond 2024).
+      Downloaded from imf.org as tab-delimited bulk file (not SDMX API).
+      Update year/edition after each IMF release (April and October).
+      File cached locally at downloads/imf_weo/ after first pull.
+
+  # ── GDP ──────────────────────────────────────────────────────────────────────
+  - name: wb_gdp_usd
+    source: external
+    provider: worldbank
+    indicator: NY.GDP.MKTP.CD
+    start: "1960"
+    note: "World Bank GDP, current USD, ~195 economies/year (214 in total), annual."
+
+  - name: wb_gdp_growth
+    source: external
+    provider: worldbank
+    indicator: NY.GDP.MKTP.KD.ZG
+    start: "1960"
+    note: "World Bank GDP growth rate (%), constant prices, ~195 economies/year (214 in total), annual."
+
+  - name: wb_gdp_pcap_usd
+    source: external
+    provider: worldbank
+    indicator: NY.GDP.PCAP.CD
+    start: "1960"
+    note: "World Bank GDP per capita, current USD, ~195 economies/year (214 in total), annual."
+
+  # ── Consumption ───────────────────────────────────────────────────────────────
+  - name: wb_consumption_hh
+    source: external
+    provider: worldbank
+    indicator: NE.CON.PRVT.CD
+    start: "1960"
+    note: "World Bank household final consumption expenditure, current USD, annual."
+
+  - name: wb_consumption_govt
+    source: external
+    provider: worldbank
+    indicator: NE.CON.GOVT.CD
+    start: "1960"
+    note: "World Bank general government final consumption expenditure, current USD, annual."
+
+  # ── Investment ────────────────────────────────────────────────────────────────
+  - name: wb_investment
+    source: external
+    provider: worldbank
+    indicator: NE.GDI.FTOT.CD
+    start: "1960"
+    note: "World Bank gross fixed capital formation, current USD, annual."
+
+  # ── Trade ─────────────────────────────────────────────────────────────────────
+  - name: wb_exports
+    source: external
+    provider: worldbank
+    indicator: NE.EXP.GNFS.CD
+    start: "1960"
+    note: "World Bank exports of goods and services, current USD, annual."
+
+  - name: wb_imports
+    source: external
+    provider: worldbank
+    indicator: NE.IMP.GNFS.CD
+    start: "1960"
+    note: "World Bank imports of goods and services, current USD, annual."
+
+  # ── Capital flows ─────────────────────────────────────────────────────────────
+  - name: wb_current_account
+    source: external
+    provider: worldbank
+    indicator: BN.CAB.XOKA.CD
+    start: "1960"
+    note: "World Bank current account balance, current USD, annual."
+
+  - name: wb_fdi_inflows
+    source: external
+    provider: worldbank
+    indicator: BX.KLT.DINV.CD.WD
+    start: "1960"
+    note: "World Bank FDI net inflows, current USD, annual."
+
+  - name: wb_fdi_outflows
+    source: external
+    provider: worldbank
+    indicator: BM.KLT.DINV.CD.WD
+    start: "1960"
+    note: "World Bank FDI net outflows, current USD, annual."
+
+  - name: wb_portfolio_equity
+    source: external
+    provider: worldbank
+    indicator: BX.PEF.TOTL.CD.WD   # was BN.KLT.PTXL.CD (net portfolio investment, all instruments) until 2026-09-19
+    start: "1960"
+    note: "World Bank portfolio equity net inflows, current USD, annual."
+
+  # ── Government fiscal aggregates (World Bank) ─────────────────────────────────
+  # Note: wb_consumption_govt (NE.CON.GOVT.CD) is the G in C+I+G+NX and covers
+  # only ~15-20% of total fiscal expenditure. These GC.* indicators are the
+  # actual fiscal aggregates from government finance statistics.
+  - name: wb_govt_revenue
+    source: external
+    provider: worldbank
+    indicator: GC.REV.TOTL.CD
+    start: "1990"
+    note: "World Bank central government revenue, current USD, annual."
+
+  - name: wb_govt_revenue_pct
+    source: external
+    provider: worldbank
+    indicator: GC.REV.TOTL.GD.ZS
+    start: "1990"
+    note: "World Bank central government revenue (% GDP), annual."
+
+  - name: wb_govt_expenditure
+    source: external
+    provider: worldbank
+    indicator: GC.XPN.TOTL.CD
+    start: "1990"
+    note: "World Bank central government expenditure, current USD, annual."
+
+  - name: wb_govt_expenditure_pct
+    source: external
+    provider: worldbank
+    indicator: GC.XPN.TOTL.GD.ZS
+    start: "1990"
+    note: "World Bank central government expenditure (% GDP), annual."
+
+  - name: wb_fiscal_balance_pct
+    source: external
+    provider: worldbank
+    indicator: GC.BAL.CASH.GD.ZS
+    start: "1990"
+    note: "World Bank cash surplus/deficit (% GDP), central government, annual."
+
+  - name: wb_govt_debt_pct
+    source: external
+    provider: worldbank
+    indicator: GC.DOD.TOTL.GD.ZS
+    start: "1990"
+    note: "World Bank central government debt (% GDP), annual."
+
+  # ── World Bank International Debt Statistics (sovereign debt & arrears) ─────
+  # Series used by Arellano, Mateos-Planas & Ríos-Rull, "Partial Default"
+  # (JPE 2023), plus creditor / relief breakdowns. IDS needs the multidimensional
+  # API (src/adapters/wb_api.py); pandas_datareader cannot see these series.
+  # clean/partial_default.py combines the three datasets below.
+  - name: wb_ids
+    source: wb_api
+    wb_source: 6               # International Debt Statistics
+    countries: all
+    counterpart_area: WLD      # all creditors
+    start: 1970
+    series:
+      # -- used in the paper
+      - DT.DOD.DPPG.CD         # External debt stocks, PPG (DOD)
+      - DT.TDS.DPPG.CD         # Debt service, PPG (TDS) — IDS carries projections ~8 years ahead
+      - DT.IXA.OFFT.CD         # Interest arrears, official creditors
+      - DT.IXA.PRVT.CD         # Interest arrears, private creditors
+      - DT.AXA.OFFT.CD         # Principal arrears, official creditors
+      - DT.AXA.PRVT.CD         # Principal arrears, private creditors
+      - DT.IXA.DLXF.CD         # Interest arrears, long-term (= official + private)
+      - DT.AXA.DLXF.CD         # Principal arrears, long-term
+      # -- context: totals, composition, flows
+      - DT.DOD.DECT.CD         # External debt stocks, total
+      - DT.TDS.DECT.CD         # Debt service, total
+      - DT.DOD.DLXF.CD         # External debt stocks, long-term
+      - DT.DOD.OFFT.CD         # PPG, official creditors (DOD)
+      - DT.DOD.PRVT.CD         # PPG, private creditors (DOD)
+      - DT.DOD.PBND.CD         # PPG, bonds (DOD)
+      - DT.DOD.PCBK.CD         # PPG, commercial banks (DOD)
+      - DT.INT.DPPG.CD         # Interest payments, PPG
+      - DT.AMT.DPPG.CD         # Principal repayments, PPG
+      - NY.GNP.MKTP.CD         # GNI
+      # -- debt relief and rescheduling
+      - DT.DFR.DPPG.CD         # Debt forgiveness or reduction
+      - DT.AXF.DPPG.CD         # Principal forgiven
+      - DT.IXF.DPPG.CD         # Interest forgiven
+      - DT.DSF.DPPG.CD         # Debt stock reduction
+      - DT.DSB.DPPG.CD         # Debt buyback
+      - DT.DXR.DPPG.CD         # Debt stock rescheduled
+      - DT.TXR.DPPG.CD         # Total amount of debt rescheduled
+      - DT.AXR.DPPG.CD         # Principal rescheduled
+      - DT.IXR.DPPG.CD         # Interest rescheduled (capitalized)
+    note: >
+      World Bank IDS, annual, ~120 low/middle-income countries + aggregates,
+      1970–latest (Dec 2025 release: actuals through 2024). Arrears are stocks
+      ("due but not paid, cumulative"). Countries that became high income
+      (CHL, HUN, KOR, MYS, PAN, POL, RUS, TTO, URY, VEN, BGR…) are absent from
+      the whole history; see wb_ids_archive.
+
+  - name: wb_ids_archive
+    source: wb_api
+    wb_source: 57              # WDI Database Archives (past vintages)
+    start: 1970
+    versions:                  # latest vintage that still carries each country
+      "201906": [BGR, MYS, PAN, RUS, VEN]   # through 2017 (PAN, MYS: arrears only, through 2016)
+      "201412": [BGR, HUN, MYS, PAN, VEN]   # through 2013
+      "201012": [BGR, CHL, MYS, PAN, RUS, URY, VEN]  # through 2009
+      "200704": [POL, TTO]                  # debt only, through 2005
+      "200304": [KOR, POL, TTO]             # debt only, through 2001
+    series:
+      - DT.DOD.DPPG.CD
+      - DT.TDS.DPPG.CD
+      - DT.IXA.DPPG.CD         # Interest arrears, PPG — current IDS no longer publishes it
+      - DT.AXA.DPPG.CD         # Principal arrears, PPG
+    note: >
+      Graduated countries' PPG debt, debt service and arrears from archived
+      WDI/GDF vintages, verified 2026-09-19. No public vintage has arrears for
+      KOR, POL or TTO. Poland's 1981–94 arrears exist only in the restricted
+      Debtor Reporting System data the paper obtained by request.
+
+  - name: wb_wdi_macro
+    source: wb_api
+    wb_source: 2               # World Development Indicators
+    countries: all
+    start: 1960
+    series:
+      - NY.GDP.MKTP.CD         # GDP, current US$ (denominator for debt ratios)
+      - NY.GDP.MKTP.KD         # GDP, constant 2015 US$ (paper: constant 2010 US$)
+      - NE.CON.TOTL.KD         # Final consumption, constant US$ (paper's do-file)
+      - NE.CON.PRVT.KD         # Household consumption, constant US$ (paper's appendix)
+      - DT.DOD.DPPG.CD         # WDI still carries PPG debt for BGR and RUS
+      - DT.TDS.DPPG.CD
+    note: "WDI macro series paired with IDS for the partial-default panel."
+
+  # ── IMF external-sector datasets (api.imf.org, SDMX 2.1) ─────────────────────
+  # The old dataservices.imf.org API is gone; see src/adapters/imf.py. Keys are
+  # given dimension by dimension in the dataflow's order ("" = all). Codes and
+  # labels verified 2026-09-19; list what exists with:
+  #   python wrdsdl.py discover imf --dataset BOP
+  # Countries are ISO3 (plus IMF aggregates such as G001 = World). Values in USD.
+
+  # ── IMF BOP: financial account flows + balances ─────────────────────────────
+  - name: imf_bop
+    source: imf
+    dataflow: BOP
+    start: "1980"
+    incremental_key: date
+    lookback_days: 1095      # BOP revises several years back
+    dims:
+      COUNTRY: ""
+      BOP_ACCOUNTING_ENTRY: [NNAFANIL_T, A_NFA_T, L_NIL_T, A_T, NETCD_T, CD_T, DB_T]
+      INDICATOR: [D_F, P_F, P_F5, P_F3, O_F, R_F, CAB, KAB, FAB, EO,
+                  G, S, GS, IN1, IN2, SC, SD, SG, SH, SI, SJ]
+      UNIT: USD
+      FREQUENCY: A
+    label_dims: [BOP_ACCOUNTING_ENTRY, INDICATOR]
+    labels:
+      NNAFANIL_T.D_F: fdi_net            # net acquisition of assets less net incurrence of liabilities
+      A_NFA_T.D_F: fdi_assets
+      L_NIL_T.D_F: fdi_liab
+      NNAFANIL_T.P_F: port_net
+      A_NFA_T.P_F: port_assets
+      L_NIL_T.P_F: port_liab
+      A_NFA_T.P_F5: port_eq_assets       # equity + investment fund shares
+      L_NIL_T.P_F5: port_eq_liab
+      A_NFA_T.P_F3: port_dbt_assets      # debt securities
+      L_NIL_T.P_F3: port_dbt_liab
+      NNAFANIL_T.O_F: other_net
+      A_NFA_T.O_F: other_assets
+      L_NIL_T.O_F: other_liab
+      A_T.R_F: reserves_net              # net acquisition of reserve assets
+      NETCD_T.CAB: ca_balance
+      NETCD_T.KAB: ka_balance
+      NNAFANIL_T.FAB: fa_balance
+      NETCD_T.EO: errors_omissions
+      # Current account detail: credit = exports/receipts, debit = imports/payments
+      NETCD_T.G: goods_net
+      CD_T.G: goods_exports
+      DB_T.G: goods_imports
+      NETCD_T.S: services_net
+      CD_T.S: services_exports
+      DB_T.S: services_imports
+      NETCD_T.GS: goods_services_net
+      CD_T.GS: goods_services_exports
+      DB_T.GS: goods_services_imports
+      NETCD_T.IN1: primary_income_net
+      CD_T.IN1: primary_income_credit
+      DB_T.IN1: primary_income_debit
+      NETCD_T.IN2: secondary_income_net
+      CD_T.IN2: secondary_income_credit
+      DB_T.IN2: secondary_income_debit
+      # Services by category
+      NETCD_T.SC: services_transport_net
+      CD_T.SC: services_transport_exports
+      DB_T.SC: services_transport_imports
+      NETCD_T.SD: services_travel_net
+      CD_T.SD: services_travel_exports
+      DB_T.SD: services_travel_imports
+      NETCD_T.SG: services_financial_net
+      CD_T.SG: services_financial_exports
+      DB_T.SG: services_financial_imports
+      NETCD_T.SH: services_ip_charges_net
+      CD_T.SH: services_ip_charges_exports
+      DB_T.SH: services_ip_charges_imports
+      NETCD_T.SI: services_telecom_it_net
+      CD_T.SI: services_telecom_it_exports
+      DB_T.SI: services_telecom_it_imports
+      NETCD_T.SJ: services_other_business_net
+      CD_T.SJ: services_other_business_exports
+      DB_T.SJ: services_other_business_imports
+    note: >
+      IMF Balance of Payments (BPM6), annual, ~205 economies, 1980–present.
+      Financial account by functional category (assets / liabilities / net),
+      current-account detail (goods, services incl. transport/travel/financial/IP/
+      telecom-IT/other business, primary and secondary income) as credit / debit /
+      net, plus current, capital and financial account balances. Portfolio equity/debt
+      nets are not published separately; clean/capital_flows.py derives them.
+      Quarterly data exist too (FREQUENCY: Q, ~157 economies).
+
+  # ── IMF IIP: international investment position (stocks) ─────────────────────
+  - name: imf_iip
+    source: imf
+    dataflow: IIP
+    start: "1980"
+    incremental_key: date
+    lookback_days: 1095
+    dims:
+      COUNTRY: ""
+      BOP_ACCOUNTING_ENTRY: [A_P, L_P, NETAL_P]
+      INDICATOR: [D, P_MV, P_F5_MV, P_F3_MV, O, R, IIP, NIIP]
+      UNIT: USD
+      FREQUENCY: A
+    label_dims: [BOP_ACCOUNTING_ENTRY, INDICATOR]
+    labels:
+      A_P.D: fdi_assets_pos
+      L_P.D: fdi_liab_pos
+      A_P.P_MV: port_assets_pos
+      L_P.P_MV: port_liab_pos
+      A_P.P_F5_MV: port_eq_assets_pos
+      L_P.P_F5_MV: port_eq_liab_pos
+      A_P.P_F3_MV: port_dbt_assets_pos
+      L_P.P_F3_MV: port_dbt_liab_pos
+      A_P.O: other_assets_pos
+      L_P.O: other_liab_pos
+      A_P.R: reserves_pos
+      A_P.IIP: total_assets_pos
+      L_P.IIP: total_liab_pos
+      NETAL_P.NIIP: niip_pos
+    note: >
+      IMF International Investment Position, annual, ~181 economies, 1980–present.
+
+  # ── IMF trade in goods, country totals (ITG) ────────────────────────────────
+  # Headline series only: exports FOB and imports CIF, both in USD. ITG also has
+  # domestic-currency values (~35 countries), price/volume indices and period-over-
+  # period changes — add TYPE_OF_TRANSFORMATION codes (FOB_XDC, CIF_IX, ...) for those.
+  # Monthly covers 108 economies, quarterly 130, annual 191, so the annual dataset
+  # is the one with full country coverage.
+  - name: imf_trade_goods_m
+    source: imf
+    dataflow: ITG
+    start: "1957"
+    incremental_key: date
+    lookback_days: 365       # monthly trade is revised for several months
+    dims:
+      COUNTRY: ""
+      INDICATOR: [XG, MG]
+      TYPE_OF_TRANSFORMATION: [FOB_USD, CIF_USD]
+      FREQUENCY: M
+    label_dims: [INDICATOR, TYPE_OF_TRANSFORMATION]
+    labels:
+      XG.FOB_USD: exports_fob_usd
+      MG.CIF_USD: imports_cif_usd
+    note: >
+      IMF International Trade in Goods, monthly, ~108 economies, 1957-01 onward.
+      Exports free on board and imports cost-insurance-freight, USD. Trade balance
+      is derived in clean/trade.py. Compare wb_exports / wb_imports (annual, BPM6
+      basis, includes services) and imf_bop goods credits/debits.
+
+  - name: imf_trade_goods_a
+    source: imf
+    dataflow: ITG
+    start: "1948"
+    incremental_key: date
+    lookback_days: 1095      # annual trade is revised years back
+    dims:
+      COUNTRY: ""
+      INDICATOR: [XG, MG]
+      TYPE_OF_TRANSFORMATION: [FOB_USD, CIF_USD]
+      FREQUENCY: A
+    label_dims: [INDICATOR, TYPE_OF_TRANSFORMATION]
+    labels:
+      XG.FOB_USD: exports_fob_usd
+      MG.CIF_USD: imports_cif_usd
+    note: >
+      IMF International Trade in Goods, annual, 191 economies, 1948–present.
+
+  # ── IMF bilateral trade in goods (IMTS — the former DOTS) ───────────────────
+  # Reporter x partner matrix. One request per indicator: each is ~1.5M rows and
+  # takes ~5 minutes. Quarterly (Q) and monthly (M) exist too and are much larger.
+  # TBG_USD (trade balance) is published as well but is exports - imports.
+  - name: imf_trade_bilateral
+    source: imf
+    dataflow: IMTS
+    start: "1948"
+    incremental_key: date
+    lookback_days: 1095
+    chunk_by: INDICATOR
+    dims:
+      COUNTRY: ""                  # reporter
+      INDICATOR: [XG_FOB_USD, MG_CIF_USD]
+      COUNTERPART_COUNTRY: ""      # partner
+      FREQUENCY: A
+    labels:
+      XG_FOB_USD: exports_fob_usd
+      MG_CIF_USD: imports_cif_usd
+    note: >
+      IMF International Merchandise Trade Statistics by partner economy, annual,
+      1948–present, ~237 reporters x ~245 partners (the successor to Direction of
+      Trade Statistics). ~3M rows, ~10 minutes to pull. Partner codes include
+      aggregates (e.g. W00 world); clean/trade.py keeps ISO3 economies.
+
+  # ── IMF PIP (formerly CPIS): bilateral portfolio investment positions ───────
+  - name: imf_cpis
+    source: imf
+    dataflow: PIP
+    start: "2001"
+    incremental_key: date
+    lookback_days: 730
+    chunk_by: INDICATOR      # all-in-one request is ~140 MB / 2 min; split it
+    dims:
+      COUNTRY: ""                  # reporter (holder)
+      ACCOUNTING_ENTRY: A          # assets as reported by the holder
+      INDICATOR: [P_TOTINV_P_USD, P_F51_P_USD, P_F3_P_USD, P_F3_L_P_USD, P_F3_S_P_USD]
+      SECTOR: S1                   # all holding sectors
+      COUNTERPART_SECTOR: S1       # all issuing sectors
+      COUNTERPART_COUNTRY: ""      # issuer economy (G001 = World)
+      FREQUENCY: A
+    labels:
+      P_TOTINV_P_USD: portfolio_total
+      P_F51_P_USD: portfolio_equity    # incl. fund shares: equity + debt = total
+      P_F3_P_USD: portfolio_debt
+      P_F3_L_P_USD: portfolio_ltdebt
+      P_F3_S_P_USD: portfolio_stdebt
+    note: >
+      IMF Portfolio Investment Positions by Counterpart Economy (the CPIS, renamed).
+      Reporter × issuer economy, annual, 2001–present, ~94 reporters × ~246
+      counterparts. Holder- and issuer-sector breakdowns and currency of
+      denomination (…_DIC_<CCY>_…) are also available; change SECTOR /
+      COUNTERPART_SECTOR / INDICATOR to get them. Non-country reporters:
+      TX093 = SEFER + SSIO (securities held as reserves and by international
+      organizations; TX091 = international organizations is in the codelist but
+      has no rows in this pull); counterpart GX031 =
+      World minus 25 significant financial centers.
+
+  # ── IMF DIP (formerly CDIS): bilateral FDI positions ────────────────────────
+  - name: imf_cdis
+    source: imf
+    dataflow: DIP
+    start: "2009"
+    incremental_key: date
+    lookback_days: 730
+    chunk_by: INDICATOR      # all-in-one request is ~175 MB / 11 min; split it
+    dims:
+      COUNTRY: ""                  # reporting economy
+      DV_TYPE: O                   # reported data (SCC = derived from counterparts)
+      INDICATOR: [INWD_D_NETLA_FALL_ALL, OTWD_D_NETAL_FALL_ALL, INWD_D_NETLA_F51_ALL,
+                  OTWD_D_NETAL_F51_ALL, INWD_D_NETLA_FL_ALL, OTWD_D_NETAL_FL_ALL]
+      COUNTERPART_COUNTRY: ""
+      FREQUENCY: A
+    labels:
+      INWD_D_NETLA_FALL_ALL: fdi_inward_total     # directional principle, net
+      OTWD_D_NETAL_FALL_ALL: fdi_outward_total
+      INWD_D_NETLA_F51_ALL: fdi_inward_equity
+      OTWD_D_NETAL_F51_ALL: fdi_outward_equity
+      INWD_D_NETLA_FL_ALL: fdi_inward_debt
+      OTWD_D_NETAL_FL_ALL: fdi_outward_debt
+    note: >
+      IMF Direct Investment Positions by Counterpart Economy (the CDIS, renamed).
+      Reporter × counterpart economy, annual, 2009–present, ~143 reporters.
+      Counterpart TX983 = not specified (incl. confidential).
+
+  # ── Government bond yields 10Y (Datastream economic series) ─────────────────
+  # Source: tr_ds_econ.wrds_ecoinfo + ecodata (IMF IFS + Datastream national sources).
+  # Frequency: monthly (MONT). Units: percent per annum.
+  # Most series are end-of-period (EP) 10-year benchmark yields.
+  # Notes on non-standard maturities:
+  #   BDGBOND.  Germany  9-10 years (ends 2019-09 — post-euro, Bund issuance slowed)
+  #   UKMEDYLD  UK gilt  average redemption yield on 10-yr stock (ends 2019-09)
+  #   BGGBOND.  Belgium  6-year-and-over
+  #   LVGBOND.  Latvia   5-year treasury bond (not in the list below)
+  #   KOGBOND.  Korea    3-year Treasury bond (most liquid KRW benchmark)
+  #   MXGBOND.  Mexico   UDIBONO (inflation-linked) 10Y
+  - name: ds_bond_yields_10y
+    source: wrds_ds_econ
+    start: "1950-01-01"
+    incremental_key: date_
+    lookback_days: 365      # monthly, ragged edge
+    mnemonics:
+      # United States
+      - USTRCN10   # Treasury constant maturity 10Y (1953–present)
+      # United Kingdom
+      - UKMEDYLD   # 10Y gilt average redemption yield (1963–2019)
+      # Euro area
+      - BDGBOND.   # Germany 9-10Y govt bond (1957–2019)
+      - FRGBOND.   # France govt guaranteed bond yield (EP)
+      - ITGBOND.   # Italy Rendistato gross yield (EP)
+      - ESGBOND.   # Spain 10Y central govt bond yield
+      - NLGBOND.   # Netherlands 10Y central govt bond
+      - BGGBOND.   # Belgium central govt bond 6Y+ yield
+      - PTGBOND.   # Portugal 10Y benchmark bond (EP) (1993–2019-09)
+      - GRGBOND.   # Greece 10Y benchmark bond (EP) (1998–2019-09)
+      - OEGBOND.   # Austria 10Y govt bond
+      - FNGBOND.   # Finland 10Y govt bond (monthly avg)
+      - IRGBOND.   # Ireland 10Y benchmark bond (EP) (1986–2019-09)
+      # Nordic / non-euro Europe
+      - DKGBOND.   # Denmark 10Y central govt bond (EP)
+      - SDGBOND.   # Sweden 10Y govt bond
+      - NWGBOND.   # Norway 10Y govt benchmark bond (EP) (1985–2021-06)
+      - SWGBOND.   # Switzerland confederation bond 10Y
+      - ICGBOND.   # Iceland 10Y treasury bond (EP)
+      # Other Europe
+      - HNGBOND.   # Hungary 10Y benchmark bond (EP)
+      - CZGBOND.   # Czech Republic 10Y long-term bond (EP)
+      - POGBOND.   # Poland 10Y govt bond (EP)
+      - RMGBOND.   # Romania 10Y govt bond (EP)
+      - RSGBOND.   # Russia 10Y govt bond (EP) (2003–2024-06)
+      # Asia-Pacific
+      - JPGBOND.   # Japan 10Y interest-bearing govt bond (EP)
+      - AUGBOND.   # Australia 10Y Commonwealth govt bond
+      - NZGBOND.   # New Zealand 10Y govt bond 2nd market
+      - KOGBOND.   # Korea 3Y treasury bond (most liquid KRW benchmark)
+      - CHGBOND.   # China 10Y govt bond (EP)
+      - INGBOND.   # India 10Y treasury bond
+      - TWGBD10Y   # Taiwan 10Y govt bond (EP)
+      - HKGBOND.   # Hong Kong 10Y govt bond (2010–2024-12)
+      - MYGBOND.   # Malaysia 10Y govt bond
+      - SPGBOND.   # Singapore 10Y govt bond (EP)
+      - THGBOND.   # Thailand 10Y govt bond
+      - PHGBOND.   # Philippines 10Y govt bond (EP)
+      - PKGBOND.   # Pakistan 10Y govt bond
+      # Americas (ex-US)
+      - CNGBOND.   # Canada 10Y+ govt bond (EP)
+      - BRGBOND.   # Brazil 10Y govt bond (EP)
+      - MXGBOND.   # Mexico UDIBONO 10Y (inflation-linked)
+      # EMEA
+      - TKGBOND.   # Turkey 10Y govt bond (EP)
+      - EYGBOND.   # Egypt 10Y govt bond (EP)
+    note: >
+      10-year government bond yields from LSEG Datastream via WRDS tr_ds_econ.
+      Monthly, end-of-period unless noted. Units: percent per annum.
+      Not all series run to present: BDGBOND./UKMEDYLD/GRGBOND./IRGBOND./PTGBOND.
+      end 2019-09, NWGBOND. 2021-06, RSGBOND. 2024-06, HKGBOND. 2024-12 (Datastream
+      discontinued; use alternative sources for current yields if needed).
+      clean/interest_rates.py maps mnemonics to ISO2 country codes and pivots wide.
+
+  # ── Monthly CPI (IMF IFS via Datastream economic series) ─────────────────────
+  # Source: tr_ds_econ.wrds_ecoinfo + ecodata. Mnemonic pattern: {CC}I64...F
+  # = IMF International Financial Statistics line 64, "Consumer Prices, All Items".
+  # 164 country series; 159 with data in 2024+. Median history from ~1970.
+  # Index level (not % change) — compute YoY in clean script.
+  # Units: index; base year varies widely by country (e.g. US 2010, UK 2015,
+  #   JP/DE/KR 2020, IN ~2024; only ~21 of 164 series are 2010=100 or 2015=100).
+  - name: ds_cpi_monthly
+    source: wrds_ds_econ
+    start: "1950-01-01"
+    incremental_key: date_
+    lookback_days: 365      # late reporters trail by up to ~8 months
+    mnemonics:
+      - AFI64...F  # AFGHANISTAN (2004-03 to 2025-01)
+      - ALI64...F  # ALBANIA (1991-01 to 2026-05)
+      - AAI64...F  # ALGERIA (1974-01 to 2026-02)
+      - AGI64...F  # ARGENTINA (2014-01 to 2026-04)
+      - AMI64...F  # ARMENIA (1992-12 to 2026-05)
+      - AEI64...F  # ARUBA (1986-01 to 2020-02)
+      - OEI64...F  # AUSTRIA (1957-01 to 2026-03)
+      - BHI64...F  # BAHAMAS (1972-07 to 2026-04)
+      - BAI64...F  # BAHRAIN (1975-07 to 2026-04)
+      - BSI64...F  # BANGLADESH (1993-07 to 2026-05)
+      - BBI64...F  # BARBADOS (1965-10 to 2026-02)
+      - BGI64...F  # BELGIUM (1955-01 to 2026-04)
+      - BZI64...F  # BELIZE (1990-11 to 2026-03)
+      - BEI64...F  # BENIN (1991-12 to 2026-04)
+      - BTI64...F  # BHUTAN (1979-12 to 2026-02)
+      - BVI64...F  # BOLIVIA (1957-01 to 2026-04)
+      - BPI64...F  # BOSNIA HERZEGOVINA (2005-01 to 2026-03)
+      - BOI64...F  # BOTSWANA (1975-06 to 2026-04)
+      - BRI64...F  # BRAZIL (1979-12 to 2026-05)
+      - BII64...F  # BRUNEI DARUSSALAM (1984-01 to 2026-04)
+      - BLI64...F  # BULGARIA (1991-01 to 2026-05)
+      - UVI64...F  # BURKINO FASO (1959-01 to 2026-04)
+      - BNI64...F  # BURUNDI (1974-01 to 2026-05)
+      - KHI64...F  # CAMBODIA (1994-10 to 2026-04)
+      - CAI64...F  # CAMEROON (1968-01 to 2026-02)
+      - CNI64...F  # CANADA (1914-01 to 2026-04)
+      - CVI64...F  # CAPE VERDE (1992-01 to 2026-04)
+      - CEI64...F  # CENTRAL AFRICA REP. (1981-01 to 2025-12)
+      - CDI64...F  # CHAD (1982-12 to 2026-04)
+      - CLI64...F  # CHILE (1970-01 to 2026-04)
+      - CBI64...F  # COLOMBIA (1955-01 to 2026-05)
+      - COI64...F  # CONGO (1978-02 to 2026-04)
+      - CRI64...F  # COSTA RICA (1957-01 to 2026-04)
+      - IVI64...F  # COTE D'IVOIRE (1960-01 to 2026-04)
+      - CTI64...F  # CROATIA (1986-01 to 2026-03)
+      - CPI64...F  # CYPRUS (1957-01 to 2026-05)
+      - CZI64...F  # CZECH REPUBLIC (1991-01 to 2026-05)
+      - DKI64...F  # DENMARK (1967-01 to 2026-04)
+      - DJI64...F  # DJIBOUTI REP. (1978-10 to 2026-05)
+      - DOI64...F  # DOMINICA (1964-04 to 2025-12)
+      - DRI64...F  # DOMINICAN REPUBLIC (1957-01 to 2026-05)
+      - EDI64...F  # ECUADOR (1957-01 to 2026-04)
+      - EYI64...F  # EGYPT (1957-01 to 2026-05)
+      - ELI64...F  # EL SALVADOR (1957-01 to 2026-05)
+      - EQI64...F  # EQUATORIAL GUINEA (1985-01 to 2025-01)
+      - EOI64...F  # ESTONIA (1992-01 to 2026-04)
+      - ETI64...F  # ETHIOPIA (1966-01 to 2026-03)
+      - FJI64...F  # FIJI ISLANDS (1969-01 to 2026-05)
+      - FNI64...F  # FINLAND (1955-01 to 2026-04)
+      - FRI64...F  # FRANCE (1955-01 to 2026-03)
+      - GAI64...F  # GABON (1963-01 to 2025-12)
+      - GMI64...F  # GAMBIA (1961-01 to 2025-08)
+      - GGI64...F  # GEORGIA (1994-01 to 2026-05)
+      - BDI64...F  # GERMANY (1955-01 to 2026-05)
+      - GHI64...F  # GHANA (1963-03 to 2026-05)
+      - GRI64...F  # GREECE (1955-01 to 2026-04)
+      - GNI64...F  # GRENADA (1976-01 to 2025-12)
+      - GWI64...F  # GUATEMALA (1957-01 to 2026-05)
+      - GEI64...F  # GUINEA (2004-01 to 2026-03)
+      - GII64...F  # GUINEA-BISSAU (1986-02 to 2026-04)
+      - GYI64...F  # GUYANA (1994-01 to 2026-04)
+      - HAI64...F  # HAITI (1957-01 to 2026-04)
+      - HOI64...F  # HONDURAS (1957-01 to 2026-03)
+      - HKI64...F  # HONG KONG (1980-10 to 2026-04)
+      - HNI64...F  # HUNGARY (1976-01 to 2026-03)
+      - ICI64...F  # ICELAND (1955-01 to 2026-05)
+      - INI64...F  # INDIA (1957-01 to 2026-04)
+      - IDI64...F  # INDONESIA (1968-01 to 2026-05)
+      - IAI64...F  # IRAN (1957-01 to 2026-04)
+      - IQI64...F  # IRAQ (2007-01 to 2026-04)
+      - IRI64...F  # IRELAND (1955-02 to 2026-04)
+      - ISI64...F  # ISRAEL (1952-01 to 2026-05)
+      - ITI64...F  # ITALY (1955-01 to 2026-05)
+      - JMI64...F  # JAMAICA (1957-01 to 2026-05)
+      - JPI64...F  # JAPAN (1955-01 to 2026-05)
+      - JOI64...F  # JORDAN (1976-01 to 2026-04)
+      - KZI64...F  # KAZAKHSTAN (1992-12 to 2026-05)
+      - KNI64...F  # KENYA (1968-01 to 2026-03)
+      - KVI64...F  # KOSOVO (2002-05 to 2026-03)
+      - KWI64...F  # KUWAIT (1973-01 to 2026-04)
+      - KYI64...F  # KYRGYZ REPUBLIC (1995-01 to 2026-04)
+      - LAI64...F  # LAOS (1987-12 to 2026-04)
+      - LVI64...F  # LATVIA (1991-01 to 2026-03)
+      - LBI64...F  # LEBANON (2007-12 to 2026-04)
+      - LSI64...F  # LESOTHO (1999-07 to 2026-03)
+      - LYI64...F  # LIBYA (1964-01 to 2026-03)
+      - LNI64...F  # LITHUANIA (1990-12 to 2026-08)
+      - LXI64...F  # LUXEMBOURG (1955-01 to 2026-04)
+      - MOI64...F  # MACAU (1988-01 to 2026-01)
+      - MKI64...F  # MACEDONIA (1993-01 to 2026-03)
+      - MDI64...F  # MADAGASCAR (1964-01 to 2026-03)
+      - MII64...F  # MALAWI (1980-01 to 2026-05)
+      - MYI64...F  # MALAYSIA (1957-01 to 2026-04)
+      - MVI64...F  # MALDIVE ISLANDS (1985-01 to 2026-04)
+      - MLI64...F  # MALI REP. (1987-07 to 2026-04)
+      - MAI64...F  # MALTA (1957-01 to 2026-04)
+      - MRI64...F  # MAURITANIA (1985-07 to 2026-05)
+      - MUI64...F  # MAURITIUS (1962-07 to 2026-04)
+      - MXI64...F  # MEXICO (1957-01 to 2026-05)
+      - MFI64...F  # MOLDOVA (1991-01 to 2026-03)
+      - MGI64...F  # MONGOLIA (1991-01 to 2026-05)
+      - MNI64...F  # MONTENEGRO (2005-01 to 2025-12)
+      - MCI64...F  # MOROCCO (1957-01 to 2026-05)
+      - MZI64...F  # MOZAMBIQUE (1989-12 to 2026-05)
+      - BUI64...F  # MYANMAR (1958-01 to 2020-11)
+      - WAI64...F  # NAMIBIA (2001-12 to 2026-05)
+      - NPI64...F  # NEPAL (1963-07 to 2026-03)
+      - NLI64...F  # NETHERLANDS (1957-01 to 2026-04)
+      - NII64...F  # NICARAGUA (1999-01 to 2026-04)
+      - NRI64...F  # NIGER REP. (1968-01 to 2026-04)
+      - NGI64...F  # NIGERIA (1960-01 to 2026-03)
+      - NWI64...F  # NORWAY (1950-01 to 2026-04)
+      - OMI64...F  # OMAN (2001-01 to 2026-02)
+      - PKI64...F  # PAKISTAN (1957-01 to 2026-05)
+      - PAI64...F  # PANAMA (1974-07 to 2026-03)
+      - PYI64...F  # PARAGUAY (1957-01 to 2026-04)
+      - PEI64...F  # PERU (1957-01 to 2026-05)
+      - PHI64...F  # PHILIPPINES (1957-01 to 2026-05)
+      - POI64...F  # POLAND (1988-01 to 2026-05)
+      - PTI64...F  # PORTUGAL (1955-01 to 2026-03)
+      - QAI64...F  # QATAR (2002-12 to 2025-08)
+      - RMI64...F  # ROMANIA (1990-10 to 2026-03)
+      - RSI64...F  # RUSSIA (1992-01 to 2026-04)
+      - RWI64...F  # RWANDA (1965-04 to 2026-05)
+      - SKI64...F  # SAINT KITTS & NEVIS (1978-01 to 2025-12)
+      - LCI64...F  # SAINT LUCIA (1964-04 to 2025-12)
+      - SVI64...F  # SAINT VINCENT (1975-01 to 2026-04)
+      - WSI64...F  # SAMOA (1967-01 to 2026-05)
+      - SFI64...F  # SAN MARINO (2002-12 to 2025-12)
+      - STI64...F  # SAO TOME (1996-12 to 2026-03)
+      - SII64...F  # SAUDI ARABIA (1980-02 to 2026-05)
+      - SGI64...F  # SENEGAL (1968-01 to 2026-04)
+      - SBI64...F  # SERBIA (1994-02 to 2025-12)
+      - SEI64...F  # SEYCHELLES (1969-06 to 2026-05)
+      - SRI64...F  # SIERRA LEONE (2006-01 to 2026-05)
+      - SPI64...F  # SINGAPORE (1961-01 to 2026-04)
+      - SXI64...F  # SLOVAKIA (1991-01 to 2026-04)
+      - SJI64...F  # SLOVENIA (1980-01 to 2026-04)
+      - SLI64...F  # SOLOMON ISLANDS (1978-01 to 2026-03)
+      - SAI64...F  # SOUTH AFRICA (1957-01 to 2026-04)
+      - KOI64...F  # SOUTH KOREA (1951-08 to 2026-05)
+      - ESI64...F  # SPAIN (1954-03 to 2026-03)
+      - LKI64...F  # SRI LANKA (1957-01 to 2026-05)
+      - SNI64...F  # SUDAN (1957-01 to 2023-02)
+      - SUI64...F  # SURINAM (1969-01 to 2026-04)
+      - SZI64...F  # SWAZILAND (1967-01 to 2020-09)
+      - SDI64...F  # SWEDEN (1955-01 to 2026-04)
+      - SWI64...F  # SWITZERLAND (1955-01 to 2026-04)
+      - TNI64...F  # TANZANIA (1978-03 to 2026-03)
+      - THI64...F  # THAILAND (1965-01 to 2026-03)
+      - TII64...F  # TIMOR (2001-12 to 2026-03)
+      - TOI64...F  # TOGO REP. (1970-01 to 2026-04)
+      - TGI64...F  # TONGA ISLANDS (1990-01 to 2026-03)
+      - TTI64...F  # TRINIDAD & TOBAGO (1957-01 to 2026-04)
+      - TUI64...F  # TUNISIA (1987-07 to 2026-04)
+      - TKI64...F  # TURKEY (1955-01 to 2026-04)
+      - UGI64...F  # UGANDA (1989-09 to 2026-05)
+      - URI64...F  # UKRAINE (1992-01 to 2026-05)
+      - UKI64...F  # UNITED KINGDOM (1955-01 to 2026-05)
+      - USI64...F  # UNITED STATES (1955-01 to 2026-05)
+      - UYI64...F  # URUGUAY (1957-01 to 2026-05)
+      - VII64...F  # VIETNAM (1995-01 to 2026-04)
+      - ZMI64...F  # ZAMBIA (1985-01 to 2026-05)
+      - ZII64...F  # ZIMBABWE (2009-01 to 2023-08)
+    note: >
+      Monthly CPI index levels (IMF IFS line 64, "Consumer Prices All Items") via
+      LSEG Datastream economic series (WRDS tr_ds_econ). 164 country series;
+      159 with data in 2024+. Mnemonic pattern: {CC}I64...F. Index level
+      (not % change) — YoY inflation computed in clean/cpi_monthly.py.
+      Base year varies widely by country (US 2010, UK 2015, JP/DE/KR 2020, ...).
+      wrds_ds_econ adapter normalises output to date_, dsmnemonic, close_.
+
+  # ── Quarterly BOP / capital flows (IMF IFS via Datastream economic series) ──
+  # Source: tr_ds_econ (same as ds_cpi_monthly and ds_bond_yields_10y).
+  # Mnemonic pattern: {CC}I{suffix} — 11 BOP aggregates, ~110-121 countries each.
+  # Quarterly, mostly 1994-present (some series from 1970s).
+  # Units vary by country (typically USD millions, check bop_meta.csv).
+  # Key series suffixes:
+  #   I109BXF = current account total
+  #   I1A9BXF = goods balance (trade balance)
+  #   I209BAA = capital account
+  #   I309NAA = financial account total
+  #   I3A9AAA / I3A9LAA = FDI assets (outflows) / liabilities (inflows)
+  #   I3B9AAA / I3B9LAA = portfolio assets / liabilities
+  #   I3D9AAA / I3D9LAA = other investment assets / liabilities
+  #   I3E9AAA = reserve assets
+  - name: ds_bop_quarterly
+    source: wrds_ds_econ
+    start: "1970-01-01"
+    incremental_key: date_
+    lookback_days: 730      # quarterly, late reporters + revisions
+    mnemonics:
+      # --- ca (BOP: CURRENT ACCOUNT) [121 countries] ---
+      - AFI109BXF  # AFGHANISTAN (2008-04 to 2021-01)
+      - ALI109BXF  # ALBANIA (1995-01 to 2025-10)
+      - AGI109BXF  # ARGENTINA (1976-01 to 2025-10)
+      - AMI109BXF  # ARMENIA (1993-01 to 2025-10)
+      - AEI109BXF  # ARUBA (1986-01 to 2023-10)
+      - AUI109BXF  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI109BXF  # AUSTRIA (2005-01 to 2025-10)
+      - BHI109BXF  # BAHAMAS (1976-01 to 2024-10)
+      - BAI109BXF  # BAHRAIN (2011-01 to 2024-10)
+      - BSI109BXF  # BANGLADESH (1976-01 to 2026-01)
+      - BYI109BXF  # BELARUS (1996-01 to 2025-10)
+      - BGI109BXF  # BELGIUM (2002-01 to 2025-10)
+      - BZI109BXF  # BELIZE (2001-01 to 2025-10)
+      - BVI109BXF  # BOLIVIA (1977-01 to 2025-10)
+      - BPI109BXF  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI109BXF  # BRAZIL (1975-01 to 2026-01)
+      - BII109BXF  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI109BXF  # BULGARIA (1991-01 to 2025-10)
+      - KHI109BXF  # CAMBODIA (1994-01 to 2025-10)
+      - CNI109BXF  # CANADA (1950-01 to 2026-01)
+      - CVI109BXF  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI109BXF  # CHILE (1991-01 to 2025-10)
+      - CHI109BXF  # CHINA (2005-01 to 2025-10)
+      - CBI109BXF  # COLOMBIA (1996-01 to 2026-01)
+      - CRI109BXF  # COSTA RICA (1999-01 to 2025-10)
+      - CTI109BXF  # CROATIA (1993-01 to 2025-07)
+      - CPI109BXF  # CYPRUS (2001-01 to 2025-10)
+      - CZI109BXF  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI109BXF  # DENMARK (1975-01 to 2025-07)
+      - EDI109BXF  # ECUADOR (1993-01 to 2025-10)
+      - EYI109BXF  # EGYPT (2011-01 to 2025-10)
+      - ELI109BXF  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI109BXF  # ESTONIA (1992-01 to 2025-10)
+      - ETI109BXF  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI109BXF  # EURO AREA (1999-01 to 2025-10)
+      - FJI109BXF  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI109BXF  # FINLAND (1975-01 to 2025-10)
+      - FRI109BXF  # FRANCE (1975-01 to 2025-10)
+      - GEI109BXF  # GUINEA (2009-01 to 2025-07)
+      - GMI109BXF  # GAMBIA (2007-01 to 2026-04)
+      - GGI109BXF  # GEORGIA (1997-01 to 2025-10)
+      - BDI109BXF  # GERMANY (1971-01 to 2025-10)
+      - GRI109BXF  # GREECE (1976-01 to 2025-07)
+      - GWI109BXF  # GUATEMALA (1977-01 to 2025-07)
+      - HAI109BXF  # HAITI (2004-10 to 2025-01)
+      - HOI109BXF  # HONDURAS (2004-01 to 2025-10)
+      - HKI109BXF  # HONG KONG (1999-01 to 2025-07)
+      - HNI109BXF  # HUNGARY (1989-10 to 2025-10)
+      - ICI109BXF  # ICELAND (1976-01 to 2025-10)
+      - INI109BXF  # INDIA (1975-01 to 2025-10)
+      - IDI109BXF  # INDONESIA (1981-01 to 2026-01)
+      - IRI109BXF  # IRELAND (2005-01 to 2025-10)
+      - ISI109BXF  # ISRAEL (1972-01 to 2025-10)
+      - ITI109BXF  # ITALY (1970-01 to 2025-10)
+      - JMI109BXF  # JAMAICA (2012-01 to 2025-10)
+      - JPI109BXF  # JAPAN (1996-01 to 2025-10)
+      - JOI109BXF  # JORDAN (1977-01 to 2025-01)
+      - KZI109BXF  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI109BXF  # KOSOVO (2009-01 to 2025-10)
+      - KYI109BXF  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI109BXF  # LAOS (1994-01 to 2026-04)
+      - LVI109BXF  # LATVIA (1993-01 to 2025-10)
+      - LBI109BXF  # LEBANON (2002-01 to 2023-10)
+      - LSI109BXF  # LESOTHO (1982-01 to 2025-10)
+      - LNI109BXF  # LITHUANIA (1993-01 to 2025-10)
+      - LXI109BXF  # LUXEMBOURG (1999-01 to 2025-10)
+      - MKI109BXF  # MACEDONIA (1996-01 to 2026-01)
+      - MDI109BXF  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI109BXF  # MALAYSIA (1999-01 to 2026-04)
+      - MAI109BXF  # MALTA (1995-01 to 2025-07)
+      - MUI109BXF  # MAURITIUS (2000-01 to 2025-01)
+      - MXI109BXF  # MEXICO (1979-01 to 2026-01)
+      - MFI109BXF  # MOLDOVA (1994-01 to 2025-10)
+      - MGI109BXF  # MONGOLIA (1998-01 to 2026-04)
+      - MCI109BXF  # MOROCCO (2003-01 to 2025-10)
+      - MZI109BXF  # MOZAMBIQUE (2005-01 to 2026-01)
+      - BUI109BXF  # MYANMAR (1976-01 to 2020-07)
+      - WAI109BXF  # NAMIBIA (1999-01 to 2025-07)
+      - NPI109BXF  # NEPAL (1977-01 to 2026-04)
+      - NLI109BXF  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI109BXF  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII109BXF  # NICARAGUA (1992-01 to 2025-01)
+      - NWI109BXF  # NORWAY (1975-01 to 2025-10)
+      - PKI109BXF  # PAKISTAN (1976-01 to 2026-01)
+      - PAI109BXF  # PANAMA (1998-01 to 2025-10)
+      - PYI109BXF  # PARAGUAY (2000-01 to 2025-10)
+      - PEI109BXF  # PERU (1977-01 to 2025-10)
+      - PHI109BXF  # PHILIPPINES (1977-01 to 2025-10)
+      - POI109BXF  # POLAND (2000-01 to 2025-10)
+      - PTI109BXF  # PORTUGAL (1975-01 to 2025-04)
+      - QAI109BXF  # QATAR (2011-01 to 2025-10)
+      - RMI109BXF  # ROMANIA (1991-01 to 2025-10)
+      - RSI109BXF  # RUSSIA (1994-01 to 2025-10)
+      - WSI109BXF  # SAMOA (2003-07 to 2025-10)
+      - STI109BXF  # SAO TOME (2011-01 to 2026-01)
+      - SII109BXF  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI109BXF  # SERBIA (2007-01 to 2025-10)
+      - SEI109BXF  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI109BXF  # SINGAPORE (1995-01 to 2026-01)
+      - SXI109BXF  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI109BXF  # SLOVENIA (1992-01 to 2025-10)
+      - SLI109BXF  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI109BXF  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI109BXF  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI109BXF  # SPAIN (1975-01 to 2025-10)
+      - LKI109BXF  # SRI LANKA (1977-01 to 2025-01)
+      - SNI109BXF  # SUDAN (1977-01 to 2025-10)
+      - SUI109BXF  # SURINAM (2005-01 to 2025-10)
+      - SDI109BXF  # SWEDEN (1975-01 to 2025-10)
+      - SWI109BXF  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI109BXF  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI109BXF  # THAILAND (1976-01 to 2025-10)
+      - TGI109BXF  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI109BXF  # TURKEY (1984-01 to 2026-01)
+      - UGI109BXF  # UGANDA (1980-01 to 2025-07)
+      - URI109BXF  # UKRAINE (1994-01 to 2025-07)
+      - UKI109BXF  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI109BXF  # UNITED STATES (1973-01 to 2025-10)
+      - UYI109BXF  # URUGUAY (2000-01 to 2025-10)
+      - VUI109BXF  # VANUATU (1984-01 to 2023-04)
+      - VII109BXF  # VIETNAM (1996-01 to 2025-07)
+      # --- goods_balance (BOP: CURRENT ACCOUNT - BALANCE ON GOODS) [121 countries] ---
+      - AFI1A9BXF  # AFGHANISTAN (2008-04 to 2021-01)
+      - ALI1A9BXF  # ALBANIA (1995-01 to 2025-10)
+      - AGI1A9BXF  # ARGENTINA (1976-01 to 2025-10)
+      - AMI1A9BXF  # ARMENIA (1993-01 to 2025-10)
+      - AEI1A9BXF  # ARUBA (1986-01 to 2023-10)
+      - AUI1A9BXF  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI1A9BXF  # AUSTRIA (2005-01 to 2025-10)
+      - BHI1A9BXF  # BAHAMAS (1976-01 to 2024-10)
+      - BAI1A9BXF  # BAHRAIN (2011-01 to 2024-10)
+      - BSI1A9BXF  # BANGLADESH (1976-01 to 2026-01)
+      - BYI1A9BXF  # BELARUS (1996-01 to 2025-10)
+      - BGI1A9BXF  # BELGIUM (2002-01 to 2025-10)
+      - BZI1A9BXF  # BELIZE (2001-01 to 2025-10)
+      - BVI1A9BXF  # BOLIVIA (1977-01 to 2025-10)
+      - BPI1A9BXF  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI1A9BXF  # BRAZIL (1975-01 to 2026-01)
+      - BII1A9BXF  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI1A9BXF  # BULGARIA (1991-01 to 2025-10)
+      - KHI1A9BXF  # CAMBODIA (1994-01 to 2025-10)
+      - CNI1A9BXF  # CANADA (1950-01 to 2026-01)
+      - CVI1A9BXF  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI1A9BXF  # CHILE (1991-01 to 2025-10)
+      - CHI1A9BXF  # CHINA (2005-01 to 2025-10)
+      - CBI1A9BXF  # COLOMBIA (1996-01 to 2026-01)
+      - CRI1A9BXF  # COSTA RICA (1999-01 to 2025-10)
+      - CTI1A9BXF  # CROATIA (1993-01 to 2025-07)
+      - CPI1A9BXF  # CYPRUS (2001-01 to 2025-10)
+      - CZI1A9BXF  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI1A9BXF  # DENMARK (1975-01 to 2025-07)
+      - EDI1A9BXF  # ECUADOR (1993-01 to 2025-10)
+      - EYI1A9BXF  # EGYPT (2011-01 to 2025-10)
+      - ELI1A9BXF  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI1A9BXF  # ESTONIA (1992-01 to 2025-10)
+      - ETI1A9BXF  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI1A9BXF  # EURO AREA (1999-01 to 2025-10)
+      - FJI1A9BXF  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI1A9BXF  # FINLAND (1975-01 to 2025-10)
+      - FRI1A9BXF  # FRANCE (1975-01 to 2025-10)
+      - GEI1A9BXF  # GUINEA (2009-01 to 2025-07)
+      - GMI1A9BXF  # GAMBIA (2007-01 to 2026-04)
+      - GGI1A9BXF  # GEORGIA (1997-01 to 2025-10)
+      - BDI1A9BXF  # GERMANY (1971-01 to 2025-10)
+      - GRI1A9BXF  # GREECE (1976-01 to 2025-07)
+      - GWI1A9BXF  # GUATEMALA (1977-01 to 2025-07)
+      - HAI1A9BXF  # HAITI (2004-10 to 2025-01)
+      - HOI1A9BXF  # HONDURAS (2004-01 to 2025-10)
+      - HKI1A9BXF  # HONG KONG (1999-01 to 2025-07)
+      - HNI1A9BXF  # HUNGARY (1989-10 to 2025-10)
+      - ICI1A9BXF  # ICELAND (1976-01 to 2025-10)
+      - INI1A9BXF  # INDIA (1975-01 to 2025-10)
+      - IDI1A9BXF  # INDONESIA (1981-01 to 2026-01)
+      - IRI1A9BXF  # IRELAND (2005-01 to 2025-10)
+      - ISI1A9BXF  # ISRAEL (1972-01 to 2025-10)
+      - ITI1A9BXF  # ITALY (1970-01 to 2025-10)
+      - JMI1A9BXF  # JAMAICA (2012-01 to 2025-10)
+      - JPI1A9BXF  # JAPAN (1996-01 to 2025-10)
+      - JOI1A9BXF  # JORDAN (1977-01 to 2025-01)
+      - KZI1A9BXF  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI1A9BXF  # KOSOVO (2009-01 to 2025-10)
+      - KYI1A9BXF  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI1A9BXF  # LAOS (1994-01 to 2026-04)
+      - LVI1A9BXF  # LATVIA (1993-01 to 2025-10)
+      - LBI1A9BXF  # LEBANON (2002-01 to 2023-10)
+      - LSI1A9BXF  # LESOTHO (1982-01 to 2025-10)
+      - LNI1A9BXF  # LITHUANIA (1993-01 to 2025-10)
+      - LXI1A9BXF  # LUXEMBOURG (1999-01 to 2025-10)
+      - MKI1A9BXF  # MACEDONIA (1996-01 to 2026-01)
+      - MDI1A9BXF  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI1A9BXF  # MALAYSIA (1999-01 to 2026-04)
+      - MAI1A9BXF  # MALTA (1995-01 to 2025-07)
+      - MUI1A9BXF  # MAURITIUS (2000-01 to 2025-01)
+      - MXI1A9BXF  # MEXICO (1979-01 to 2026-01)
+      - MFI1A9BXF  # MOLDOVA (1994-01 to 2025-10)
+      - MGI1A9BXF  # MONGOLIA (1998-01 to 2026-04)
+      - MCI1A9BXF  # MOROCCO (2003-01 to 2025-10)
+      - MZI1A9BXF  # MOZAMBIQUE (2005-01 to 2026-01)
+      - BUI1A9BXF  # MYANMAR (1976-01 to 2020-07)
+      - WAI1A9BXF  # NAMIBIA (1999-01 to 2025-07)
+      - NPI1A9BXF  # NEPAL (1977-01 to 2026-04)
+      - NLI1A9BXF  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI1A9BXF  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII1A9BXF  # NICARAGUA (1992-01 to 2025-01)
+      - NWI1A9BXF  # NORWAY (1975-01 to 2025-10)
+      - PKI1A9BXF  # PAKISTAN (1976-01 to 2026-01)
+      - PAI1A9BXF  # PANAMA (1998-01 to 2025-10)
+      - PYI1A9BXF  # PARAGUAY (2000-01 to 2025-10)
+      - PEI1A9BXF  # PERU (1977-01 to 2025-10)
+      - PHI1A9BXF  # PHILIPPINES (1977-01 to 2025-10)
+      - POI1A9BXF  # POLAND (2000-01 to 2025-10)
+      - PTI1A9BXF  # PORTUGAL (1975-01 to 2026-04)
+      - QAI1A9BXF  # QATAR (2011-01 to 2025-10)
+      - RMI1A9BXF  # ROMANIA (1991-01 to 2025-10)
+      - RSI1A9BXF  # RUSSIA (1994-01 to 2025-10)
+      - WSI1A9BXF  # SAMOA (2003-07 to 2025-10)
+      - STI1A9BXF  # SAO TOME (2011-01 to 2026-01)
+      - SII1A9BXF  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI1A9BXF  # SERBIA (2007-01 to 2025-10)
+      - SEI1A9BXF  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI1A9BXF  # SINGAPORE (1995-01 to 2026-01)
+      - SXI1A9BXF  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI1A9BXF  # SLOVENIA (1992-01 to 2025-10)
+      - SLI1A9BXF  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI1A9BXF  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI1A9BXF  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI1A9BXF  # SPAIN (1975-01 to 2025-10)
+      - LKI1A9BXF  # SRI LANKA (1977-01 to 2025-01)
+      - SNI1A9BXF  # SUDAN (1977-01 to 2025-10)
+      - SUI1A9BXF  # SURINAM (2005-01 to 2025-10)
+      - SDI1A9BXF  # SWEDEN (1975-01 to 2025-10)
+      - SWI1A9BXF  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI1A9BXF  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI1A9BXF  # THAILAND (1976-01 to 2025-10)
+      - TGI1A9BXF  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI1A9BXF  # TURKEY (1984-01 to 2026-01)
+      - UGI1A9BXF  # UGANDA (1980-01 to 2025-07)
+      - URI1A9BXF  # UKRAINE (1994-01 to 2025-07)
+      - UKI1A9BXF  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI1A9BXF  # UNITED STATES (1973-01 to 2025-10)
+      - UYI1A9BXF  # URUGUAY (2000-01 to 2025-10)
+      - VUI1A9BXF  # VANUATU (1984-01 to 2023-04)
+      - VII1A9BXF  # VIETNAM (1996-01 to 2025-07)
+      # --- capital_account (BOP: CAPITAL ACCOUNT) [112 countries] ---
+      - ALI209BAA  # ALBANIA (1995-01 to 2025-10)
+      - AGI209BAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI209BAA  # ARMENIA (1993-01 to 2025-10)
+      - AEI209BAA  # ARUBA (1986-01 to 2023-10)
+      - AUI209BAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI209BAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI209BAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI209BAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI209BAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI209BAA  # BELARUS (1996-01 to 2025-10)
+      - BGI209BAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI209BAA  # BELIZE (2001-01 to 2025-10)
+      - BVI209BAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI209BAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI209BAA  # BRAZIL (1975-01 to 2026-01)
+      - BII209BAA  # BRUNEI DARUSSALAM (2001-01 to 2023-10)
+      - BLI209BAA  # BULGARIA (1992-01 to 2025-10)
+      - KHI209BAA  # CAMBODIA (1994-01 to 2025-10)
+      - CNI209BAA  # CANADA (1950-01 to 2026-01)
+      - CVI209BAA  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI209BAA  # CHILE (1991-01 to 2025-10)
+      - CHI209BAA  # CHINA (2005-01 to 2025-10)
+      - CRI209BAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI209BAA  # CROATIA (1993-01 to 2025-07)
+      - CPI209BAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI209BAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI209BAA  # DENMARK (1975-01 to 2025-07)
+      - EDI209BAA  # ECUADOR (1993-01 to 2025-10)
+      - EYI209BAA  # EGYPT (2011-01 to 2025-10)
+      - ELI209BAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI209BAA  # ESTONIA (1992-01 to 2025-10)
+      - ETI209BAA  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI209BAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI209BAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI209BAA  # FINLAND (1975-01 to 2025-10)
+      - FRI209BAA  # FRANCE (1975-01 to 2025-10)
+      - GEI209BAA  # GUINEA (2009-01 to 2025-07)
+      - GMI209BAA  # GAMBIA (2007-01 to 2026-04)
+      - GGI209BAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI209BAA  # GERMANY (1971-01 to 2025-10)
+      - GRI209BAA  # GREECE (1999-01 to 2025-07)
+      - GWI209BAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI209BAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI209BAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI209BAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI209BAA  # ICELAND (1976-01 to 2025-10)
+      - INI209BAA  # INDIA (1975-01 to 2025-10)
+      - IDI209BAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI209BAA  # IRELAND (2005-01 to 2025-10)
+      - ISI209BAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI209BAA  # ITALY (1970-01 to 2025-10)
+      - JPI209BAA  # JAPAN (1996-01 to 2025-10)
+      - JOI209BAA  # JORDAN (1977-01 to 2025-01)
+      - KZI209BAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI209BAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI209BAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI209BAA  # LAOS (1994-01 to 2026-04)
+      - LVI209BAA  # LATVIA (1997-01 to 2025-10)
+      - LBI209BAA  # LEBANON (2002-01 to 2023-10)
+      - LSI209BAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI209BAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI209BAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI209BAA  # MACEDONIA (1998-01 to 2026-01)
+      - MDI209BAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI209BAA  # MALAYSIA (2002-01 to 2026-04)
+      - MAI209BAA  # MALTA (1995-01 to 2025-07)
+      - MUI209BAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI209BAA  # MEXICO (1979-01 to 2026-01)
+      - MFI209BAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI209BAA  # MONGOLIA (2007-01 to 2026-04)
+      - MCI209BAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI209BAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - WAI209BAA  # NAMIBIA (1999-01 to 2025-07)
+      - NPI209BAA  # NEPAL (1977-01 to 2026-04)
+      - NLI209BAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI209BAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII209BAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI209BAA  # NORWAY (1975-01 to 2025-10)
+      - PKI209BAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI209BAA  # PANAMA (1998-01 to 2025-10)
+      - PYI209BAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI209BAA  # PERU (1977-01 to 2025-10)
+      - PHI209BAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI209BAA  # POLAND (2000-01 to 2025-10)
+      - PTI209BAA  # PORTUGAL (1975-01 to 2025-04)
+      - QAI209BAA  # QATAR (2011-01 to 2025-10)
+      - RMI209BAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI209BAA  # RUSSIA (1994-01 to 2025-10)
+      - WSI209BAA  # SAMOA (2003-07 to 2025-10)
+      - SBI209BAA  # SERBIA (2007-01 to 2025-10)
+      - SEI209BAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SXI209BAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI209BAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI209BAA  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI209BAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI209BAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI209BAA  # SPAIN (1975-01 to 2025-10)
+      - LKI209BAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI209BAA  # SUDAN (1977-01 to 2025-10)
+      - SUI209BAA  # SURINAM (2005-01 to 2025-10)
+      - SDI209BAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI209BAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI209BAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI209BAA  # THAILAND (1976-01 to 2025-10)
+      - TGI209BAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI209BAA  # TURKEY (1984-01 to 2026-01)
+      - UGI209BAA  # UGANDA (1980-01 to 2025-07)
+      - URI209BAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI209BAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI209BAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI209BAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI209BAA  # VANUATU (1984-01 to 2023-04)
+      # --- financial_account (BOP: FINANCIAL ACCOUNT) [117 countries] ---
+      - ALI309NAA  # ALBANIA (1995-01 to 2025-10)
+      - AGI309NAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI309NAA  # ARMENIA (1993-01 to 2025-10)
+      - AEI309NAA  # ARUBA (1986-01 to 2023-10)
+      - AUI309NAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI309NAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI309NAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI309NAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI309NAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI309NAA  # BELARUS (1996-01 to 2025-10)
+      - BGI309NAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI309NAA  # BELIZE (2001-01 to 2025-10)
+      - BVI309NAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI309NAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI309NAA  # BRAZIL (1975-01 to 2026-01)
+      - BII309NAA  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI309NAA  # BULGARIA (1991-01 to 2025-10)
+      - KHI309NAA  # CAMBODIA (1994-01 to 2025-10)
+      - CNI309NAA  # CANADA (1950-01 to 2026-01)
+      - CVI309NAA  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI309NAA  # CHILE (1991-01 to 2025-10)
+      - CHI309NAA  # CHINA (2005-01 to 2025-10)
+      - CBI309NAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI309NAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI309NAA  # CROATIA (1993-01 to 2025-07)
+      - CPI309NAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI309NAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI309NAA  # DENMARK (1975-01 to 2025-07)
+      - EDI309NAA  # ECUADOR (1993-01 to 2025-10)
+      - EYI309NAA  # EGYPT (2011-01 to 2025-10)
+      - ELI309NAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI309NAA  # ESTONIA (1992-01 to 2025-10)
+      - ETI309NAA  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI309NAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI309NAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI309NAA  # FINLAND (1975-01 to 2025-10)
+      - FRI309NAA  # FRANCE (1975-01 to 2025-10)
+      - GEI309NAA  # GUINEA (2009-01 to 2025-07)
+      - GMI309NAA  # GAMBIA (2007-01 to 2026-04)
+      - GGI309NAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI309NAA  # GERMANY (1971-01 to 2025-10)
+      - GRI309NAA  # GREECE (1976-01 to 2025-07)
+      - GWI309NAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI309NAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI309NAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI309NAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI309NAA  # ICELAND (1976-01 to 2025-10)
+      - INI309NAA  # INDIA (1975-01 to 2025-10)
+      - IDI309NAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI309NAA  # IRELAND (2005-01 to 2025-10)
+      - ISI309NAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI309NAA  # ITALY (1970-01 to 2025-10)
+      - JPI309NAA  # JAPAN (1996-01 to 2025-10)
+      - JOI309NAA  # JORDAN (1977-01 to 2025-01)
+      - KZI309NAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI309NAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI309NAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI309NAA  # LAOS (1994-01 to 2026-04)
+      - LVI309NAA  # LATVIA (1993-01 to 2025-10)
+      - LBI309NAA  # LEBANON (2002-01 to 2023-10)
+      - LSI309NAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI309NAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI309NAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI309NAA  # MACEDONIA (1996-01 to 2026-01)
+      - MDI309NAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI309NAA  # MALAYSIA (1999-01 to 2026-04)
+      - MAI309NAA  # MALTA (1995-01 to 2025-07)
+      - MUI309NAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI309NAA  # MEXICO (1979-01 to 2026-01)
+      - MFI309NAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI309NAA  # MONGOLIA (1998-01 to 2026-04)
+      - MCI309NAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI309NAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - BUI309NAA  # MYANMAR (1976-01 to 2020-07)
+      - WAI309NAA  # NAMIBIA (1999-01 to 2025-07)
+      - NPI309NAA  # NEPAL (1977-01 to 2026-04)
+      - NLI309NAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI309NAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII309NAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI309NAA  # NORWAY (1975-01 to 2025-10)
+      - PKI309NAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI309NAA  # PANAMA (1998-01 to 2025-10)
+      - PYI309NAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI309NAA  # PERU (1977-01 to 2025-10)
+      - PHI309NAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI309NAA  # POLAND (2000-01 to 2025-10)
+      - PTI309NAA  # PORTUGAL (1975-01 to 2025-04)
+      - QAI309NAA  # QATAR (2011-01 to 2025-10)
+      - RMI309NAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI309NAA  # RUSSIA (1994-01 to 2021-10)
+      - WSI309NAA  # SAMOA (2003-07 to 2025-10)
+      - SII309NAA  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI309NAA  # SERBIA (2007-01 to 2025-10)
+      - SEI309NAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI309NAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI309NAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI309NAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI309NAA  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI309NAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI309NAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI309NAA  # SPAIN (1975-01 to 2025-10)
+      - LKI309NAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI309NAA  # SUDAN (1977-01 to 2025-10)
+      - SUI309NAA  # SURINAM (2005-01 to 2025-10)
+      - SDI309NAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI309NAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI309NAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI309NAA  # THAILAND (1976-01 to 2025-10)
+      - TGI309NAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI309NAA  # TURKEY (1984-01 to 2026-01)
+      - UGI309NAA  # UGANDA (1980-01 to 2025-07)
+      - URI309NAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI309NAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI309NAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI309NAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI309NAA  # VANUATU (1984-01 to 2023-04)
+      - VII309NAA  # VIETNAM (1996-01 to 2025-07)
+      # --- fdi_assets (BOP: FINANCIAL ACCOUNT - DIRECT INVESTMENT, ASSETS) [112 countries] ---
+      - ALI3A9AAA  # ALBANIA (1995-01 to 2025-10)
+      - AGI3A9AAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI3A9AAA  # ARMENIA (1994-01 to 2025-10)
+      - AEI3A9AAA  # ARUBA (1986-01 to 2023-10)
+      - AUI3A9AAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI3A9AAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI3A9AAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI3A9AAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI3A9AAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI3A9AAA  # BELARUS (1997-01 to 2025-10)
+      - BGI3A9AAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI3A9AAA  # BELIZE (2001-01 to 2025-10)
+      - BVI3A9AAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI3A9AAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI3A9AAA  # BRAZIL (1975-01 to 2026-01)
+      - BII3A9AAA  # BRUNEI DARUSSALAM (2004-01 to 2025-10)
+      - BLI3A9AAA  # BULGARIA (1992-01 to 2025-10)
+      - KHI3A9AAA  # CAMBODIA (1998-01 to 2025-10)
+      - CNI3A9AAA  # CANADA (1950-01 to 2026-01)
+      - CVI3A9AAA  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI3A9AAA  # CHILE (1991-01 to 2025-10)
+      - CHI3A9AAA  # CHINA (2005-01 to 2025-10)
+      - CBI3A9AAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI3A9AAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI3A9AAA  # CROATIA (1993-01 to 2025-07)
+      - CPI3A9AAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI3A9AAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI3A9AAA  # DENMARK (1975-01 to 2025-07)
+      - EDI3A9AAA  # ECUADOR (2000-01 to 2025-10)
+      - EYI3A9AAA  # EGYPT (2011-01 to 2025-10)
+      - ELI3A9AAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI3A9AAA  # ESTONIA (1992-01 to 2025-10)
+      - EMI3A9AAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI3A9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI3A9AAA  # FINLAND (1975-01 to 2025-10)
+      - FRI3A9AAA  # FRANCE (1975-01 to 2025-10)
+      - GEI3A9AAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3A9AAA  # GAMBIA (2010-04 to 2026-04)
+      - GGI3A9AAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI3A9AAA  # GERMANY (1971-01 to 2025-10)
+      - GRI3A9AAA  # GREECE (1999-01 to 2025-07)
+      - GWI3A9AAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI3A9AAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI3A9AAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI3A9AAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI3A9AAA  # ICELAND (1976-01 to 2025-10)
+      - INI3A9AAA  # INDIA (1975-01 to 2025-10)
+      - IDI3A9AAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI3A9AAA  # IRELAND (2005-01 to 2025-10)
+      - ISI3A9AAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI3A9AAA  # ITALY (1970-01 to 2025-10)
+      - JPI3A9AAA  # JAPAN (1996-01 to 2025-10)
+      - JOI3A9AAA  # JORDAN (1977-01 to 2025-01)
+      - KZI3A9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI3A9AAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI3A9AAA  # KYRGYZ REPUBLIC (1998-01 to 2024-10)
+      - LAI3A9AAA  # LAOS (1997-01 to 2026-04)
+      - LVI3A9AAA  # LATVIA (1993-01 to 2025-10)
+      - LBI3A9AAA  # LEBANON (2002-01 to 2023-10)
+      - LNI3A9AAA  # LITHUANIA (1995-01 to 2025-10)
+      - LXI3A9AAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI3A9AAA  # MACEDONIA (1998-01 to 2026-01)
+      - MYI3A9AAA  # MALAYSIA (1999-01 to 2026-04)
+      - MAI3A9AAA  # MALTA (1995-01 to 2025-07)
+      - MUI3A9AAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI3A9AAA  # MEXICO (1979-01 to 2026-01)
+      - MFI3A9AAA  # MOLDOVA (1995-01 to 2025-10)
+      - MGI3A9AAA  # MONGOLIA (2005-01 to 2026-04)
+      - MCI3A9AAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI3A9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - WAI3A9AAA  # NAMIBIA (1999-01 to 2025-07)
+      - NPI3A9AAA  # NEPAL (1977-01 to 2026-04)
+      - NLI3A9AAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI3A9AAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NWI3A9AAA  # NORWAY (1975-01 to 2025-10)
+      - PKI3A9AAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI3A9AAA  # PANAMA (1998-01 to 2025-10)
+      - PYI3A9AAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI3A9AAA  # PERU (1977-01 to 2025-10)
+      - PHI3A9AAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI3A9AAA  # POLAND (2000-01 to 2025-10)
+      - PTI3A9AAA  # PORTUGAL (1975-01 to 2026-04)
+      - QAI3A9AAA  # QATAR (2011-01 to 2025-10)
+      - RMI3A9AAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI3A9AAA  # RUSSIA (1994-01 to 2025-10)
+      - WSI3A9AAA  # SAMOA (2003-07 to 2025-10)
+      - SII3A9AAA  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI3A9AAA  # SERBIA (2007-01 to 2025-10)
+      - SEI3A9AAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI3A9AAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI3A9AAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI3A9AAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI3A9AAA  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI3A9AAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI3A9AAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI3A9AAA  # SPAIN (1975-01 to 2025-10)
+      - LKI3A9AAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI3A9AAA  # SUDAN (1977-01 to 2025-10)
+      - SUI3A9AAA  # SURINAM (2006-01 to 2025-10)
+      - SDI3A9AAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI3A9AAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI3A9AAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI3A9AAA  # THAILAND (1976-01 to 2025-10)
+      - TGI3A9AAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI3A9AAA  # TURKEY (1987-01 to 2026-01)
+      - UGI3A9AAA  # UGANDA (1980-01 to 2025-07)
+      - URI3A9AAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI3A9AAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI3A9AAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI3A9AAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI3A9AAA  # VANUATU (1984-01 to 2023-04)
+      - VII3A9AAA  # VIETNAM (1996-01 to 2025-07)
+      # --- fdi_liabs (BOP: FINANCIAL ACCOUNT - DIRECT INVESTMENT, LIABILITIES) [117 countries] ---
+      - ALI3A9LAA  # ALBANIA (1995-01 to 2025-10)
+      - AGI3A9LAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI3A9LAA  # ARMENIA (1993-01 to 2025-10)
+      - AEI3A9LAA  # ARUBA (1986-01 to 2023-10)
+      - AUI3A9LAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI3A9LAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI3A9LAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI3A9LAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI3A9LAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI3A9LAA  # BELARUS (1996-01 to 2025-10)
+      - BGI3A9LAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI3A9LAA  # BELIZE (2001-01 to 2025-10)
+      - BVI3A9LAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI3A9LAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI3A9LAA  # BRAZIL (1975-01 to 2026-01)
+      - BII3A9LAA  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI3A9LAA  # BULGARIA (1991-01 to 2025-10)
+      - KHI3A9LAA  # CAMBODIA (1994-01 to 2025-10)
+      - CNI3A9LAA  # CANADA (1950-01 to 2026-01)
+      - CVI3A9LAA  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI3A9LAA  # CHILE (1991-01 to 2025-10)
+      - CHI3A9LAA  # CHINA (2005-01 to 2025-10)
+      - CBI3A9LAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI3A9LAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI3A9LAA  # CROATIA (1993-01 to 2025-07)
+      - CPI3A9LAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI3A9LAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI3A9LAA  # DENMARK (1975-01 to 2025-07)
+      - EDI3A9LAA  # ECUADOR (1993-01 to 2025-10)
+      - EYI3A9LAA  # EGYPT (2011-01 to 2025-10)
+      - ELI3A9LAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI3A9LAA  # ESTONIA (1992-01 to 2025-10)
+      - ETI3A9LAA  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI3A9LAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI3A9LAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI3A9LAA  # FINLAND (1975-01 to 2025-10)
+      - FRI3A9LAA  # FRANCE (1975-01 to 2025-10)
+      - GEI3A9LAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3A9LAA  # GAMBIA (2007-01 to 2026-04)
+      - GGI3A9LAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI3A9LAA  # GERMANY (1971-01 to 2025-10)
+      - GRI3A9LAA  # GREECE (1976-01 to 2025-07)
+      - GWI3A9LAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI3A9LAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI3A9LAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI3A9LAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI3A9LAA  # ICELAND (1976-01 to 2025-10)
+      - INI3A9LAA  # INDIA (1975-01 to 2025-10)
+      - IDI3A9LAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI3A9LAA  # IRELAND (2005-01 to 2025-10)
+      - ISI3A9LAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI3A9LAA  # ITALY (1970-01 to 2025-10)
+      - JPI3A9LAA  # JAPAN (1996-01 to 2025-10)
+      - JOI3A9LAA  # JORDAN (1977-01 to 2025-01)
+      - KZI3A9LAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI3A9LAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI3A9LAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI3A9LAA  # LAOS (1994-01 to 2026-04)
+      - LVI3A9LAA  # LATVIA (1993-01 to 2025-10)
+      - LBI3A9LAA  # LEBANON (2002-01 to 2023-10)
+      - LSI3A9LAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI3A9LAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI3A9LAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI3A9LAA  # MACEDONIA (1996-01 to 2026-01)
+      - MDI3A9LAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3A9LAA  # MALAYSIA (1999-01 to 2026-04)
+      - MAI3A9LAA  # MALTA (1995-01 to 2025-07)
+      - MUI3A9LAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI3A9LAA  # MEXICO (1979-01 to 2026-01)
+      - MFI3A9LAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI3A9LAA  # MONGOLIA (1998-01 to 2026-04)
+      - MCI3A9LAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI3A9LAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - BUI3A9LAA  # MYANMAR (1976-01 to 2020-07)
+      - WAI3A9LAA  # NAMIBIA (1999-01 to 2025-07)
+      - NPI3A9LAA  # NEPAL (1977-01 to 2026-04)
+      - NLI3A9LAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI3A9LAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII3A9LAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI3A9LAA  # NORWAY (1975-01 to 2025-10)
+      - PKI3A9LAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI3A9LAA  # PANAMA (1998-01 to 2025-10)
+      - PYI3A9LAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI3A9LAA  # PERU (1977-01 to 2025-10)
+      - PHI3A9LAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI3A9LAA  # POLAND (2000-01 to 2025-10)
+      - PTI3A9LAA  # PORTUGAL (1975-01 to 2025-04)
+      - QAI3A9LAA  # QATAR (2011-01 to 2025-10)
+      - RMI3A9LAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI3A9LAA  # RUSSIA (1994-01 to 2025-10)
+      - WSI3A9LAA  # SAMOA (2003-07 to 2025-10)
+      - SII3A9LAA  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI3A9LAA  # SERBIA (2007-01 to 2025-10)
+      - SEI3A9LAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI3A9LAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI3A9LAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI3A9LAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI3A9LAA  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI3A9LAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI3A9LAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI3A9LAA  # SPAIN (1975-01 to 2025-10)
+      - LKI3A9LAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI3A9LAA  # SUDAN (1977-01 to 2025-10)
+      - SUI3A9LAA  # SURINAM (2005-01 to 2025-10)
+      - SDI3A9LAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI3A9LAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI3A9LAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI3A9LAA  # THAILAND (1976-01 to 2025-10)
+      - TGI3A9LAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI3A9LAA  # TURKEY (1984-01 to 2026-01)
+      - UGI3A9LAA  # UGANDA (1980-01 to 2025-07)
+      - URI3A9LAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI3A9LAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI3A9LAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI3A9LAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI3A9LAA  # VANUATU (1984-01 to 2023-04)
+      - VII3A9LAA  # VIETNAM (1996-01 to 2025-07)
+      # --- portfolio_assets (BOP: FINANCIAL ACCOUNT - PORTFOLIO INVESTMENT, ASSETS) [112 countries] ---
+      - ALI3B9AAA  # ALBANIA (1996-01 to 2025-10)
+      - AGI3B9AAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI3B9AAA  # ARMENIA (1994-01 to 2025-10)
+      - AEI3B9AAA  # ARUBA (1986-01 to 2023-10)
+      - AUI3B9AAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI3B9AAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI3B9AAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI3B9AAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI3B9AAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI3B9AAA  # BELARUS (1996-01 to 2025-10)
+      - BGI3B9AAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI3B9AAA  # BELIZE (2001-01 to 2025-10)
+      - BVI3B9AAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI3B9AAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI3B9AAA  # BRAZIL (1975-01 to 2026-01)
+      - BII3B9AAA  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI3B9AAA  # BULGARIA (1992-01 to 2025-10)
+      - KHI3B9AAA  # CAMBODIA (1998-01 to 2025-10)
+      - CNI3B9AAA  # CANADA (1950-01 to 2026-01)
+      - CVI3B9AAA  # CAPE VERDE (2000-01 to 2025-10)
+      - CLI3B9AAA  # CHILE (1991-01 to 2025-10)
+      - CHI3B9AAA  # CHINA (2005-01 to 2025-10)
+      - CBI3B9AAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI3B9AAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI3B9AAA  # CROATIA (1993-01 to 2025-07)
+      - CPI3B9AAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI3B9AAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI3B9AAA  # DENMARK (1975-01 to 2025-07)
+      - EDI3B9AAA  # ECUADOR (2000-01 to 2025-10)
+      - EYI3B9AAA  # EGYPT (2011-01 to 2025-10)
+      - ELI3B9AAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI3B9AAA  # ESTONIA (1992-01 to 2025-10)
+      - ETI3B9AAA  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI3B9AAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI3B9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI3B9AAA  # FINLAND (1975-01 to 2025-10)
+      - FRI3B9AAA  # FRANCE (1975-01 to 2025-10)
+      - GEI3B9AAA  # GUINEA (2009-01 to 2025-07)
+      - GGI3B9AAA  # GEORGIA (2000-01 to 2025-10)
+      - BDI3B9AAA  # GERMANY (1971-01 to 2025-10)
+      - GRI3B9AAA  # GREECE (1999-01 to 2025-07)
+      - GWI3B9AAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI3B9AAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI3B9AAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI3B9AAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI3B9AAA  # ICELAND (1976-01 to 2025-10)
+      - INI3B9AAA  # INDIA (1975-01 to 2025-10)
+      - IDI3B9AAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI3B9AAA  # IRELAND (2005-01 to 2025-10)
+      - ISI3B9AAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI3B9AAA  # ITALY (1970-01 to 2025-10)
+      - JPI3B9AAA  # JAPAN (1996-01 to 2025-10)
+      - JOI3B9AAA  # JORDAN (1977-01 to 2025-01)
+      - KZI3B9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI3B9AAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI3B9AAA  # KYRGYZ REPUBLIC (1995-01 to 2024-10)
+      - LAI3B9AAA  # LAOS (1997-01 to 2026-04)
+      - LVI3B9AAA  # LATVIA (1993-01 to 2025-10)
+      - LBI3B9AAA  # LEBANON (2002-01 to 2023-10)
+      - LSI3B9AAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI3B9AAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI3B9AAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI3B9AAA  # MACEDONIA (1996-01 to 2026-01)
+      - MYI3B9AAA  # MALAYSIA (1999-01 to 2026-04)
+      - MAI3B9AAA  # MALTA (1995-01 to 2025-07)
+      - MUI3B9AAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI3B9AAA  # MEXICO (1979-01 to 2026-01)
+      - MFI3B9AAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI3B9AAA  # MONGOLIA (2004-01 to 2026-04)
+      - MCI3B9AAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI3B9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - WAI3B9AAA  # NAMIBIA (1999-01 to 2025-07)
+      - NLI3B9AAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI3B9AAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII3B9AAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI3B9AAA  # NORWAY (1975-01 to 2025-10)
+      - PKI3B9AAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI3B9AAA  # PANAMA (1998-01 to 2025-10)
+      - PYI3B9AAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI3B9AAA  # PERU (1977-01 to 2025-10)
+      - PHI3B9AAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI3B9AAA  # POLAND (2000-01 to 2025-10)
+      - PTI3B9AAA  # PORTUGAL (1975-01 to 2026-04)
+      - QAI3B9AAA  # QATAR (2011-01 to 2025-10)
+      - RMI3B9AAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI3B9AAA  # RUSSIA (1994-01 to 2025-10)
+      - WSI3B9AAA  # SAMOA (2003-07 to 2025-10)
+      - SII3B9AAA  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI3B9AAA  # SERBIA (2007-01 to 2025-10)
+      - SEI3B9AAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI3B9AAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI3B9AAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI3B9AAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI3B9AAA  # SOLOMON ISLANDS (2007-01 to 2024-10)
+      - SAI3B9AAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI3B9AAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI3B9AAA  # SPAIN (1975-01 to 2025-10)
+      - LKI3B9AAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI3B9AAA  # SUDAN (1977-01 to 2025-10)
+      - SUI3B9AAA  # SURINAM (2006-01 to 2025-10)
+      - SDI3B9AAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI3B9AAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI3B9AAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI3B9AAA  # THAILAND (1976-01 to 2025-10)
+      - TKI3B9AAA  # TURKEY (1987-01 to 2026-01)
+      - UGI3B9AAA  # UGANDA (1980-01 to 2025-07)
+      - URI3B9AAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI3B9AAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI3B9AAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI3B9AAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI3B9AAA  # VANUATU (1984-01 to 2023-04)
+      - VII3B9AAA  # VIETNAM (1996-01 to 2025-07)
+      # --- portfolio_liabs (BOP: FINANCIAL ACCOUNT - PORTFOLIO INVESTMENT, LIABILITIES) [110 countries] ---
+      - ALI3B9LAA  # ALBANIA (1996-01 to 2025-10)
+      - AGI3B9LAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI3B9LAA  # ARMENIA (1994-01 to 2025-10)
+      - AEI3B9LAA  # ARUBA (1986-01 to 2023-10)
+      - AUI3B9LAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI3B9LAA  # AUSTRIA (2005-01 to 2025-10)
+      - BAI3B9LAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI3B9LAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI3B9LAA  # BELARUS (1996-01 to 2025-10)
+      - BGI3B9LAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI3B9LAA  # BELIZE (2001-01 to 2025-10)
+      - BVI3B9LAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI3B9LAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI3B9LAA  # BRAZIL (1975-01 to 2026-01)
+      - BLI3B9LAA  # BULGARIA (1992-01 to 2025-10)
+      - KHI3B9LAA  # CAMBODIA (1998-01 to 2025-10)
+      - CNI3B9LAA  # CANADA (1950-01 to 2026-01)
+      - CVI3B9LAA  # CAPE VERDE (1999-01 to 2025-10)
+      - CLI3B9LAA  # CHILE (1991-01 to 2025-10)
+      - CHI3B9LAA  # CHINA (2005-01 to 2025-10)
+      - CBI3B9LAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI3B9LAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI3B9LAA  # CROATIA (1993-01 to 2025-07)
+      - CPI3B9LAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI3B9LAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI3B9LAA  # DENMARK (1975-01 to 2025-07)
+      - EDI3B9LAA  # ECUADOR (1993-01 to 2025-10)
+      - EYI3B9LAA  # EGYPT (2011-01 to 2025-10)
+      - ELI3B9LAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI3B9LAA  # ESTONIA (1992-01 to 2025-10)
+      - EMI3B9LAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI3B9LAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI3B9LAA  # FINLAND (1975-01 to 2025-10)
+      - FRI3B9LAA  # FRANCE (1975-01 to 2025-10)
+      - GEI3B9LAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3B9LAA  # GAMBIA (2025-04 to 2026-04)
+      - GGI3B9LAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI3B9LAA  # GERMANY (1971-01 to 2025-10)
+      - GRI3B9LAA  # GREECE (1976-01 to 2025-07)
+      - GWI3B9LAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI3B9LAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI3B9LAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI3B9LAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI3B9LAA  # ICELAND (1976-01 to 2025-10)
+      - INI3B9LAA  # INDIA (1975-01 to 2025-10)
+      - IDI3B9LAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI3B9LAA  # IRELAND (2005-01 to 2025-10)
+      - ISI3B9LAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI3B9LAA  # ITALY (1970-01 to 2025-10)
+      - JPI3B9LAA  # JAPAN (1996-01 to 2025-10)
+      - JOI3B9LAA  # JORDAN (1977-01 to 2025-01)
+      - KZI3B9LAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI3B9LAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI3B9LAA  # KYRGYZ REPUBLIC (1995-01 to 2024-10)
+      - LAI3B9LAA  # LAOS (1994-01 to 2026-04)
+      - LVI3B9LAA  # LATVIA (1995-01 to 2025-10)
+      - LBI3B9LAA  # LEBANON (2002-01 to 2023-10)
+      - LSI3B9LAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI3B9LAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI3B9LAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI3B9LAA  # MACEDONIA (1996-01 to 2026-01)
+      - MYI3B9LAA  # MALAYSIA (1999-01 to 2026-04)
+      - MAI3B9LAA  # MALTA (1995-01 to 2025-07)
+      - MUI3B9LAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI3B9LAA  # MEXICO (1979-01 to 2026-01)
+      - MFI3B9LAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI3B9LAA  # MONGOLIA (2000-01 to 2026-04)
+      - MCI3B9LAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI3B9LAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - WAI3B9LAA  # NAMIBIA (1999-01 to 2025-07)
+      - NLI3B9LAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI3B9LAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII3B9LAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI3B9LAA  # NORWAY (1975-01 to 2025-10)
+      - PKI3B9LAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI3B9LAA  # PANAMA (1998-01 to 2025-10)
+      - PYI3B9LAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI3B9LAA  # PERU (1977-01 to 2025-10)
+      - PHI3B9LAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI3B9LAA  # POLAND (2000-01 to 2025-10)
+      - PTI3B9LAA  # PORTUGAL (1975-01 to 2025-04)
+      - QAI3B9LAA  # QATAR (2011-01 to 2025-10)
+      - RMI3B9LAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI3B9LAA  # RUSSIA (1994-01 to 2025-10)
+      - SII3B9LAA  # SAUDI ARABIA (2008-01 to 2025-10)
+      - SBI3B9LAA  # SERBIA (2007-01 to 2025-10)
+      - SEI3B9LAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI3B9LAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI3B9LAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI3B9LAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI3B9LAA  # SOLOMON ISLANDS (2017-01 to 2024-10)
+      - SAI3B9LAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI3B9LAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI3B9LAA  # SPAIN (1975-01 to 2025-10)
+      - LKI3B9LAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI3B9LAA  # SUDAN (1977-01 to 2025-10)
+      - SUI3B9LAA  # SURINAM (2005-01 to 2025-10)
+      - SDI3B9LAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI3B9LAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI3B9LAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI3B9LAA  # THAILAND (1976-01 to 2025-10)
+      - TGI3B9LAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI3B9LAA  # TURKEY (1986-01 to 2026-01)
+      - UGI3B9LAA  # UGANDA (1980-01 to 2025-07)
+      - URI3B9LAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI3B9LAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI3B9LAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI3B9LAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI3B9LAA  # VANUATU (1984-01 to 2023-04)
+      - VII3B9LAA  # VIETNAM (1996-01 to 2025-07)
+      # --- other_inv_assets (BOP: FINANCIAL ACCOUNT - OTHER INVESTMENT, ASSETS) [116 countries] ---
+      - ALI3D9AAA  # ALBANIA (1995-01 to 2025-10)
+      - AGI3D9AAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI3D9AAA  # ARMENIA (1993-01 to 2025-10)
+      - AEI3D9AAA  # ARUBA (1986-01 to 2023-10)
+      - AUI3D9AAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI3D9AAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI3D9AAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI3D9AAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI3D9AAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI3D9AAA  # BELARUS (1996-01 to 2025-10)
+      - BGI3D9AAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI3D9AAA  # BELIZE (2001-01 to 2025-10)
+      - BVI3D9AAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI3D9AAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI3D9AAA  # BRAZIL (1975-01 to 2026-01)
+      - BII3D9AAA  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI3D9AAA  # BULGARIA (1991-01 to 2025-10)
+      - KHI3D9AAA  # CAMBODIA (1994-01 to 2025-10)
+      - CNI3D9AAA  # CANADA (1950-01 to 2026-01)
+      - CVI3D9AAA  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI3D9AAA  # CHILE (1991-01 to 2025-10)
+      - CHI3D9AAA  # CHINA (2005-01 to 2025-10)
+      - CBI3D9AAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI3D9AAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI3D9AAA  # CROATIA (1993-01 to 2025-07)
+      - CPI3D9AAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI3D9AAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI3D9AAA  # DENMARK (1975-01 to 2025-07)
+      - EDI3D9AAA  # ECUADOR (1993-01 to 2025-10)
+      - EYI3D9AAA  # EGYPT (2011-01 to 2025-10)
+      - ELI3D9AAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI3D9AAA  # ESTONIA (1992-01 to 2025-10)
+      - ETI3D9AAA  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI3D9AAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI3D9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI3D9AAA  # FINLAND (1975-01 to 2025-10)
+      - FRI3D9AAA  # FRANCE (1975-01 to 2025-10)
+      - GEI3D9AAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3D9AAA  # GAMBIA (2007-01 to 2026-04)
+      - GGI3D9AAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI3D9AAA  # GERMANY (1971-01 to 2025-10)
+      - GRI3D9AAA  # GREECE (1976-01 to 2025-07)
+      - GWI3D9AAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI3D9AAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI3D9AAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI3D9AAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI3D9AAA  # ICELAND (1976-01 to 2025-10)
+      - INI3D9AAA  # INDIA (1975-01 to 2025-10)
+      - IDI3D9AAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI3D9AAA  # IRELAND (2005-01 to 2025-10)
+      - ISI3D9AAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI3D9AAA  # ITALY (1970-01 to 2025-10)
+      - JPI3D9AAA  # JAPAN (1996-01 to 2025-10)
+      - JOI3D9AAA  # JORDAN (1977-01 to 2025-01)
+      - KZI3D9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI3D9AAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI3D9AAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI3D9AAA  # LAOS (1994-01 to 2026-04)
+      - LVI3D9AAA  # LATVIA (1993-01 to 2025-10)
+      - LBI3D9AAA  # LEBANON (2002-01 to 2023-10)
+      - LSI3D9AAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI3D9AAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI3D9AAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI3D9AAA  # MACEDONIA (1996-01 to 2026-01)
+      - MDI3D9AAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3D9AAA  # MALAYSIA (1999-01 to 2026-04)
+      - MAI3D9AAA  # MALTA (1995-01 to 2025-07)
+      - MUI3D9AAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI3D9AAA  # MEXICO (1979-01 to 2026-01)
+      - MFI3D9AAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI3D9AAA  # MONGOLIA (1998-01 to 2026-04)
+      - MCI3D9AAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI3D9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - WAI3D9AAA  # NAMIBIA (1999-01 to 2025-07)
+      - NPI3D9AAA  # NEPAL (1977-01 to 2026-04)
+      - NLI3D9AAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI3D9AAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII3D9AAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI3D9AAA  # NORWAY (1975-01 to 2025-10)
+      - PKI3D9AAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI3D9AAA  # PANAMA (1998-01 to 2025-10)
+      - PYI3D9AAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI3D9AAA  # PERU (1977-01 to 2025-10)
+      - PHI3D9AAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI3D9AAA  # POLAND (2000-01 to 2025-10)
+      - PTI3D9AAA  # PORTUGAL (1975-01 to 2026-04)
+      - QAI3D9AAA  # QATAR (2011-01 to 2025-10)
+      - RMI3D9AAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI3D9AAA  # RUSSIA (1994-01 to 2025-10)
+      - WSI3D9AAA  # SAMOA (2003-07 to 2025-10)
+      - SII3D9AAA  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI3D9AAA  # SERBIA (2007-01 to 2025-10)
+      - SEI3D9AAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI3D9AAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI3D9AAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI3D9AAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI3D9AAA  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI3D9AAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI3D9AAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI3D9AAA  # SPAIN (1975-01 to 2025-10)
+      - LKI3D9AAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI3D9AAA  # SUDAN (1977-01 to 2025-10)
+      - SUI3D9AAA  # SURINAM (2005-01 to 2025-10)
+      - SDI3D9AAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI3D9AAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI3D9AAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI3D9AAA  # THAILAND (1976-01 to 2025-10)
+      - TGI3D9AAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI3D9AAA  # TURKEY (1984-01 to 2026-01)
+      - UGI3D9AAA  # UGANDA (1980-01 to 2025-07)
+      - URI3D9AAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI3D9AAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI3D9AAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI3D9AAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI3D9AAA  # VANUATU (1984-01 to 2023-04)
+      - VII3D9AAA  # VIETNAM (1996-01 to 2025-07)
+      # --- other_inv_liabs (BOP: FINANCIAL ACCOUNT - OTHER INVESTMENT, LIABILITIES) [117 countries] ---
+      - ALI3D9LAA  # ALBANIA (1995-01 to 2025-10)
+      - AGI3D9LAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI3D9LAA  # ARMENIA (1993-01 to 2025-10)
+      - AEI3D9LAA  # ARUBA (1986-01 to 2023-10)
+      - AUI3D9LAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI3D9LAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI3D9LAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI3D9LAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI3D9LAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI3D9LAA  # BELARUS (1996-01 to 2025-10)
+      - BGI3D9LAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI3D9LAA  # BELIZE (2001-01 to 2025-10)
+      - BVI3D9LAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI3D9LAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI3D9LAA  # BRAZIL (1975-01 to 2026-01)
+      - BII3D9LAA  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI3D9LAA  # BULGARIA (1991-01 to 2025-10)
+      - KHI3D9LAA  # CAMBODIA (1994-01 to 2025-10)
+      - CNI3D9LAA  # CANADA (1950-01 to 2026-01)
+      - CVI3D9LAA  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI3D9LAA  # CHILE (1991-01 to 2025-10)
+      - CHI3D9LAA  # CHINA (2005-01 to 2025-10)
+      - CBI3D9LAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI3D9LAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI3D9LAA  # CROATIA (1993-01 to 2025-07)
+      - CPI3D9LAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI3D9LAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI3D9LAA  # DENMARK (1975-01 to 2025-07)
+      - EDI3D9LAA  # ECUADOR (1993-01 to 2025-10)
+      - EYI3D9LAA  # EGYPT (2011-01 to 2025-10)
+      - ELI3D9LAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI3D9LAA  # ESTONIA (1992-01 to 2025-10)
+      - ETI3D9LAA  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI3D9LAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI3D9LAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI3D9LAA  # FINLAND (1975-01 to 2025-10)
+      - FRI3D9LAA  # FRANCE (1975-01 to 2025-10)
+      - GEI3D9LAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3D9LAA  # GAMBIA (2007-01 to 2026-04)
+      - GGI3D9LAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI3D9LAA  # GERMANY (1971-01 to 2025-10)
+      - GRI3D9LAA  # GREECE (1976-01 to 2025-07)
+      - GWI3D9LAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI3D9LAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI3D9LAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI3D9LAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI3D9LAA  # ICELAND (1976-01 to 2025-10)
+      - INI3D9LAA  # INDIA (1975-01 to 2025-10)
+      - IDI3D9LAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI3D9LAA  # IRELAND (2005-01 to 2025-10)
+      - ISI3D9LAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI3D9LAA  # ITALY (1970-01 to 2025-10)
+      - JPI3D9LAA  # JAPAN (1996-01 to 2025-10)
+      - JOI3D9LAA  # JORDAN (1977-01 to 2025-01)
+      - KZI3D9LAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI3D9LAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI3D9LAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI3D9LAA  # LAOS (1994-01 to 2026-04)
+      - LVI3D9LAA  # LATVIA (1993-01 to 2025-10)
+      - LBI3D9LAA  # LEBANON (2002-01 to 2023-10)
+      - LSI3D9LAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI3D9LAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI3D9LAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI3D9LAA  # MACEDONIA (1996-01 to 2026-01)
+      - MDI3D9LAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3D9LAA  # MALAYSIA (2001-01 to 2026-04)
+      - MAI3D9LAA  # MALTA (1995-01 to 2025-07)
+      - MUI3D9LAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI3D9LAA  # MEXICO (1979-01 to 2026-01)
+      - MFI3D9LAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI3D9LAA  # MONGOLIA (1998-01 to 2026-04)
+      - MCI3D9LAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI3D9LAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - BUI3D9LAA  # MYANMAR (1976-01 to 2020-07)
+      - WAI3D9LAA  # NAMIBIA (1999-01 to 2025-07)
+      - NPI3D9LAA  # NEPAL (1977-01 to 2026-04)
+      - NLI3D9LAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI3D9LAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII3D9LAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI3D9LAA  # NORWAY (1975-01 to 2025-10)
+      - PKI3D9LAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI3D9LAA  # PANAMA (1998-01 to 2025-10)
+      - PYI3D9LAA  # PARAGUAY (2000-01 to 2025-10)
+      - PEI3D9LAA  # PERU (1977-01 to 2025-10)
+      - PHI3D9LAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI3D9LAA  # POLAND (2000-01 to 2025-10)
+      - PTI3D9LAA  # PORTUGAL (1975-01 to 2025-04)
+      - QAI3D9LAA  # QATAR (2011-01 to 2025-10)
+      - RMI3D9LAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI3D9LAA  # RUSSIA (1994-01 to 2021-10)
+      - WSI3D9LAA  # SAMOA (2003-07 to 2025-10)
+      - SII3D9LAA  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI3D9LAA  # SERBIA (2007-01 to 2025-10)
+      - SEI3D9LAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI3D9LAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI3D9LAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI3D9LAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI3D9LAA  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI3D9LAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI3D9LAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI3D9LAA  # SPAIN (1975-01 to 2025-10)
+      - LKI3D9LAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI3D9LAA  # SUDAN (1977-01 to 2025-10)
+      - SUI3D9LAA  # SURINAM (2005-01 to 2025-10)
+      - SDI3D9LAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI3D9LAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI3D9LAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI3D9LAA  # THAILAND (1976-01 to 2025-10)
+      - TGI3D9LAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI3D9LAA  # TURKEY (1984-01 to 2026-01)
+      - UGI3D9LAA  # UGANDA (1980-01 to 2025-07)
+      - URI3D9LAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI3D9LAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI3D9LAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI3D9LAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI3D9LAA  # VANUATU (1984-01 to 2023-04)
+      - VII3D9LAA  # VIETNAM (1996-01 to 2025-07)
+      # --- reserve_assets (BOP: FINANCIAL ACCOUNT - RESERVE ASSETS) [117 countries] ---
+      - ALI3E9AAA  # ALBANIA (1995-01 to 2025-10)
+      - AGI3E9AAA  # ARGENTINA (1976-01 to 2025-10)
+      - AMI3E9AAA  # ARMENIA (1993-01 to 2025-10)
+      - AEI3E9AAA  # ARUBA (1986-01 to 2023-10)
+      - AUI3E9AAA  # AUSTRALIA (1989-01 to 2025-10)
+      - OEI3E9AAA  # AUSTRIA (2005-01 to 2025-10)
+      - BHI3E9AAA  # BAHAMAS (1976-01 to 2024-10)
+      - BAI3E9AAA  # BAHRAIN (2011-01 to 2024-10)
+      - BSI3E9AAA  # BANGLADESH (1976-01 to 2026-01)
+      - BYI3E9AAA  # BELARUS (1996-01 to 2025-10)
+      - BGI3E9AAA  # BELGIUM (2002-01 to 2025-10)
+      - BZI3E9AAA  # BELIZE (2001-01 to 2025-10)
+      - BVI3E9AAA  # BOLIVIA (1977-01 to 2025-10)
+      - BPI3E9AAA  # BOSNIA HERZEGOVINA (2001-01 to 2025-10)
+      - BRI3E9AAA  # BRAZIL (1975-01 to 2026-01)
+      - BII3E9AAA  # BRUNEI DARUSSALAM (2001-01 to 2025-10)
+      - BLI3E9AAA  # BULGARIA (1991-01 to 2025-10)
+      - KHI3E9AAA  # CAMBODIA (1994-01 to 2025-10)
+      - CNI3E9AAA  # CANADA (1950-01 to 2026-01)
+      - CVI3E9AAA  # CAPE VERDE (1998-01 to 2025-10)
+      - CLI3E9AAA  # CHILE (1991-01 to 2025-10)
+      - CHI3E9AAA  # CHINA (2005-01 to 2025-10)
+      - CBI3E9AAA  # COLOMBIA (1996-01 to 2026-01)
+      - CRI3E9AAA  # COSTA RICA (1999-01 to 2025-10)
+      - CTI3E9AAA  # CROATIA (1993-01 to 2025-07)
+      - CPI3E9AAA  # CYPRUS (2001-01 to 2025-10)
+      - CZI3E9AAA  # CZECH REPUBLIC (1993-01 to 2025-10)
+      - DKI3E9AAA  # DENMARK (1975-01 to 2025-07)
+      - EDI3E9AAA  # ECUADOR (1993-01 to 2025-10)
+      - EYI3E9AAA  # EGYPT (2011-01 to 2025-10)
+      - ELI3E9AAA  # EL SALVADOR (1999-01 to 2025-10)
+      - EOI3E9AAA  # ESTONIA (1992-01 to 2025-10)
+      - ETI3E9AAA  # ETHIOPIA (1977-01 to 2024-10)
+      - EMI3E9AAA  # EURO AREA (1999-01 to 2025-10)
+      - FJI3E9AAA  # FIJI ISLANDS (2000-01 to 2025-04)
+      - FNI3E9AAA  # FINLAND (1975-01 to 2025-10)
+      - FRI3E9AAA  # FRANCE (1975-01 to 2025-10)
+      - GEI3E9AAA  # GUINEA (2009-01 to 2025-07)
+      - GMI3E9AAA  # GAMBIA (2007-01 to 2026-04)
+      - GGI3E9AAA  # GEORGIA (1997-01 to 2025-10)
+      - BDI3E9AAA  # GERMANY (1971-01 to 2025-10)
+      - GRI3E9AAA  # GREECE (1976-01 to 2025-07)
+      - GWI3E9AAA  # GUATEMALA (1977-01 to 2025-07)
+      - HOI3E9AAA  # HONDURAS (2004-01 to 2025-10)
+      - HKI3E9AAA  # HONG KONG (1999-01 to 2025-07)
+      - HNI3E9AAA  # HUNGARY (1989-10 to 2025-10)
+      - ICI3E9AAA  # ICELAND (1976-01 to 2025-10)
+      - INI3E9AAA  # INDIA (1975-01 to 2025-10)
+      - IDI3E9AAA  # INDONESIA (1981-01 to 2026-01)
+      - IRI3E9AAA  # IRELAND (2005-01 to 2025-10)
+      - ISI3E9AAA  # ISRAEL (1972-01 to 2025-10)
+      - ITI3E9AAA  # ITALY (1970-01 to 2025-10)
+      - JPI3E9AAA  # JAPAN (1996-01 to 2025-10)
+      - JOI3E9AAA  # JORDAN (1977-01 to 2025-01)
+      - KZI3E9AAA  # KAZAKHSTAN (1995-01 to 2025-10)
+      - KVI3E9AAA  # KOSOVO (2009-01 to 2025-10)
+      - KYI3E9AAA  # KYRGYZ REPUBLIC (1993-01 to 2024-10)
+      - LAI3E9AAA  # LAOS (1994-01 to 2026-04)
+      - LVI3E9AAA  # LATVIA (1993-01 to 2025-10)
+      - LBI3E9AAA  # LEBANON (2002-01 to 2023-10)
+      - LSI3E9AAA  # LESOTHO (1982-01 to 2025-10)
+      - LNI3E9AAA  # LITHUANIA (1993-01 to 2025-10)
+      - LXI3E9AAA  # LUXEMBOURG (2002-01 to 2025-10)
+      - MKI3E9AAA  # MACEDONIA (1996-01 to 2026-01)
+      - MDI3E9AAA  # MADAGASCAR (2003-01 to 2025-10)
+      - MYI3E9AAA  # MALAYSIA (1999-01 to 2026-04)
+      - MAI3E9AAA  # MALTA (1995-01 to 2025-07)
+      - MUI3E9AAA  # MAURITIUS (2000-01 to 2025-01)
+      - MXI3E9AAA  # MEXICO (1979-01 to 2026-01)
+      - MFI3E9AAA  # MOLDOVA (1994-01 to 2025-10)
+      - MGI3E9AAA  # MONGOLIA (1998-01 to 2026-04)
+      - MCI3E9AAA  # MOROCCO (2003-01 to 2025-10)
+      - MZI3E9AAA  # MOZAMBIQUE (2005-01 to 2026-01)
+      - BUI3E9AAA  # MYANMAR (1976-01 to 2020-07)
+      - WAI3E9AAA  # NAMIBIA (1999-01 to 2025-07)
+      - NPI3E9AAA  # NEPAL (1977-01 to 2026-04)
+      - NLI3E9AAA  # NETHERLANDS (1967-01 to 2025-07)
+      - NZI3E9AAA  # NEW ZEALAND (2000-01 to 2025-10)
+      - NII3E9AAA  # NICARAGUA (1992-01 to 2025-01)
+      - NWI3E9AAA  # NORWAY (1975-01 to 2025-10)
+      - PKI3E9AAA  # PAKISTAN (1976-01 to 2026-01)
+      - PAI3E9AAA  # PANAMA (1998-01 to 2025-10)
+      - PYI3E9AAA  # PARAGUAY (1977-04 to 2025-10)
+      - PEI3E9AAA  # PERU (1977-01 to 2025-10)
+      - PHI3E9AAA  # PHILIPPINES (1977-01 to 2025-10)
+      - POI3E9AAA  # POLAND (2000-01 to 2025-10)
+      - PTI3E9AAA  # PORTUGAL (1975-01 to 2026-04)
+      - QAI3E9AAA  # QATAR (2011-01 to 2025-10)
+      - RMI3E9AAA  # ROMANIA (1991-01 to 2025-10)
+      - RSI3E9AAA  # RUSSIA (1994-01 to 2021-10)
+      - WSI3E9AAA  # SAMOA (2003-07 to 2025-10)
+      - SII3E9AAA  # SAUDI ARABIA (2006-01 to 2025-10)
+      - SBI3E9AAA  # SERBIA (2007-01 to 2025-10)
+      - SEI3E9AAA  # SEYCHELLES (1979-01 to 2025-07)
+      - SPI3E9AAA  # SINGAPORE (1995-01 to 2026-01)
+      - SXI3E9AAA  # SLOVAKIA (1993-01 to 2025-10)
+      - SJI3E9AAA  # SLOVENIA (1992-01 to 2025-10)
+      - SLI3E9AAA  # SOLOMON ISLANDS (2006-01 to 2024-10)
+      - SAI3E9AAA  # SOUTH AFRICA (1960-01 to 2025-10)
+      - KOI3E9AAA  # SOUTH KOREA (1976-01 to 2026-01)
+      - ESI3E9AAA  # SPAIN (1975-01 to 2025-10)
+      - LKI3E9AAA  # SRI LANKA (1977-01 to 2025-01)
+      - SNI3E9AAA  # SUDAN (1977-01 to 2025-10)
+      - SUI3E9AAA  # SURINAM (2005-01 to 2025-10)
+      - SDI3E9AAA  # SWEDEN (1975-01 to 2025-10)
+      - SWI3E9AAA  # SWITZERLAND (1999-01 to 2025-10)
+      - TJI3E9AAA  # TAJIKISTAN (2002-01 to 2025-10)
+      - THI3E9AAA  # THAILAND (1976-01 to 2025-10)
+      - TGI3E9AAA  # TONGA ISLANDS (1977-07 to 2026-01)
+      - TKI3E9AAA  # TURKEY (1984-01 to 2026-01)
+      - UGI3E9AAA  # UGANDA (1980-01 to 2025-07)
+      - URI3E9AAA  # UKRAINE (1994-01 to 2025-07)
+      - UKI3E9AAA  # UNITED KINGDOM (1970-01 to 2025-10)
+      - USI3E9AAA  # UNITED STATES (1973-01 to 2025-10)
+      - UYI3E9AAA  # URUGUAY (2000-01 to 2025-10)
+      - VUI3E9AAA  # VANUATU (1984-01 to 2023-04)
+      - VII3E9AAA  # VIETNAM (1996-01 to 2025-07)
+    note: >
+      Quarterly BOP aggregates from IMF IFS via LSEG Datastream (WRDS tr_ds_econ).
+      11 series x ~110-121 active countries. Euro Area aggregate (EM prefix) excluded
+      in clean script. Units typically USD millions but vary — check bop_meta.csv.
+      wrds_ds_econ adapter normalises output to date_, dsmnemonic, close_.
+      clean/bop_quarterly.py pivots each series to a separate wide file.
+
+  # ── Precious & base metals (Datastream commodities) ───────────────────────────
+  # Source: tr_ds_comds.wrds_cmdy_info + wrds_cmdy_data via wrds_ds_comds adapter.
+  # Precious metals (USD/troy oz): gold (1968), silver (1970/2012), platinum (1976),
+  #   palladium (1987).
+  # LME base metals (USD/MT): aluminium 99.7% (LAHCASH, 1988; monthly until 1993-06), aluminium alloy
+  #   (LADCASH, 1993), lead (LEDCASH, 1993).
+  # Note: LME cash prices for copper, zinc, nickel, tin are NOT in tr_ds_comds —
+  #   need to locate in tr_ds_equities or tr_ds_fut (TODO). Use LCP15MT/LZZ15MT/
+  #   LNI15MT (15-month forwards, USD) as proxies if needed.
+  # SLVCASH (1970–2014, cents/troy oz) overlaps SILVPM$ (2012–present, USD/troy oz).
+  - name: ds_metals
+    source: wrds_ds_comds
+    start: "1968-01-01"
+    incremental_key: date_
+    mnemonics:
+      # Precious metals
+      - GOLDBLN    # Gold Bullion LBM USD/troy oz (1968–present)
+      - SLVCASH    # Silver Fix LBM Cash USD cents/troy oz (1970–2014, dead)
+      - SILVPM$    # Silver Perth Mint USD/troy oz (2012–present)
+      - PLATFRE    # Platinum London Free Market USD/troy oz (1976–present)
+      - PALLADM    # Palladium USD/troy oz (1987–present)
+      # LME base metals (confirmed in tr_ds_comds, USD/MT)
+      - LAHCASH    # LME Aluminium 99.7% Cash USD/MT (1988–present; monthly until 1993-06)
+      - LADCASH    # LME Aluminium Alloy Cash USD/MT (1993–present)
+      - LEDCASH    # LME Lead Cash USD/MT (1993–present)
+    note: >
+      Precious metals (gold, silver, platinum, palladium) and LME base metals
+      from LSEG Datastream via WRDS tr_ds_comds. All USD except SLVCASH which is
+      cents/troy oz. Silver has two overlapping series: SLVCASH (1970–2014 dead)
+      and SILVPM$ (2012–present active). LME copper, zinc, nickel, and tin cash
+      prices are NOT in tr_ds_comds; see TODO in config.
+
+  # ── Energy commodities (Datastream) ──────────────────────────────────────────
+  # Brent spot: OILBREN = BFO Month 1 USD/barrel (1970–present, 11,197 obs; monthly until 1981).
+  # Nat gas: NATLGAS = Henry Hub USD/MMBTU (1993–2018-08 daily, one stray obs 2020-09; dead). Active UK
+  #   NBP gas is NATBGAS (GBP, ICE). No active USD Henry Hub spot in comds.
+  # Heating oil: EIAHONY = NY Harbor Spot FOB USD/gallon (1986–present, WEEKLY).
+  # Gasoline: GSUNLRG = Unleaded Regular Non-Oxy NY US cents/gallon (1983–present).
+  - name: ds_energy_comds
+    source: wrds_ds_comds
+    start: "1970-01-01"
+    incremental_key: date_
+    mnemonics:
+      - OILBREN    # Brent crude BFO Month 1 USD/barrel (1970–present; monthly until 1981)
+      - NATLGAS    # Henry Hub natural gas USD/MMBTU (1993–2018-08, dead)
+      - EIAHONY    # Heating oil No.2 NYH Spot FOB USD/gallon (1986–present, weekly)
+      - GSUNLRG    # Gasoline unleaded regular NY US cents/gallon (1983–present)
+    note: >
+      Energy commodity spot prices from LSEG Datastream via WRDS tr_ds_comds.
+      WTI crude is separate (ds_wti_front, ds_wti_curve). NATLGAS daily data end
+      2018-08 (plus one stale obs on 2020-09-24; dead series); no active USD Henry Hub
+      in tr_ds_comds after that. EIAHONY is weekly; GSUNLRG is in US cents/gallon.
+
+  # ── Agricultural commodities (Datastream) ────────────────────────────────────
+  # Grains: wheat (WHEATMP, spring Minneapolis, 1979), corn (CORNUS2, 1979),
+  #   soybeans (SOYBEAN, 1979) — all USD/bushel.
+  # Softs: coffee (COFDICA, ICO composite daily, 1986, US cents/lb), cocoa (COCINUS,
+  #   ICCO daily USD/MT, 1985), sugar (WSUGDLY, ISA daily US cents/lb, 1985),
+  #   cotton (COTTONM, Memphis USD/lb, 1980).
+  - name: ds_agri_comds
+    source: wrds_ds_comds
+    start: "1979-01-01"
+    incremental_key: date_
+    mnemonics:
+      - WHEATMP    # Wheat spring Minneapolis USD/bushel (1979–present)
+      - CORNUS2    # Corn No.2 yellow central Illinois USD/bushel (1979–present)
+      - SOYBEAN    # Soybeans No.1 yellow USD/bushel (1979–present)
+      - COFDICA    # Coffee ICO Composite daily US cents/lb (1986–present)
+      - COCINUS    # Cocoa ICCO daily price USA USD/MT (1985–present)
+      - WSUGDLY    # Raw sugar ISA daily price US cents/lb (1985–present)
+      - COTTONM    # Cotton 1-1/16 STR Low-Middling Memphis USD/lb (1980–present)
+    note: >
+      Agricultural commodity spot prices from LSEG Datastream via WRDS tr_ds_comds.
+      Grains are USD/bushel; cocoa USD/MT, cotton USD/lb, coffee and sugar US cents/lb.
+
+  # ── Commodity indices (Datastream) ────────────────────────────────────────────
+  # S&P GSCI family (1969–present): spot, total return, excess return variants.
+  # Refinitiv CRB Equal Weight (NYFECRB, 1956–2021, dead).
+  # Bloomberg Commodity Index (BCOM) not found in tr_ds_comds; may require
+  # direct Datastream access or separate download.
+  - name: ds_comdy_indices
+    source: wrds_ds_comds
+    start: "1956-01-01"
+    incremental_key: date_
+    mnemonics:
+      - CGSYSPT    # S&P GSCI Commodity Spot Index (1969–present)
+      - GSCITOT    # S&P GSCI Commodity Total Return (1969–present)
+      - GSCIEXR    # S&P GSCI Commodity Excess Return (1969–present)
+      - GSNESPT    # S&P GSCI Non-Energy Spot (1969–present)
+      - GSNETOT    # S&P GSCI Non-Energy Total Return (1969–present)
+      - GSAGSPT    # S&P GSCI Agriculture Spot (1969–present)
+      - GSAGTOT    # S&P GSCI Agriculture Total Return (1969–present)
+      - GSPMSPT    # S&P GSCI Precious Metal Spot (1973–present)
+      - GSPMTOT    # S&P GSCI Precious Metal Total Return (1973–present)
+      - NYFECRB    # Refinitiv CRB Equal Weight Index (1956–2021, dead)
+    note: >
+      Commodity price indices from LSEG Datastream via WRDS tr_ds_comds.
+      S&P GSCI family has three return variants: Spot (price index only),
+      Excess Return (futures roll, no T-bill), Total Return (ER + T-bill).
+      CRB series dead 2021-02; Bloomberg Commodity Index (BCOM) not available
+      in tr_ds_comds.
+
+  # ── Country equity index panel (Datastream) ───────────────────────────────────
+  # Source: tr_ds_equities.ds2equityindex + ds2indexdata via wrds_ds_index adapter.
+  # 47 markets. pi_ = price index (ex-dividend), ri = return index (total; empty for 14 of 47).
+  # Index selection: active series with longest history per country-code region,
+  # verified 2026-06-25 from ds2equityindex + ds2indexdata.
+  # Notes on known caveats:
+  #   GB: FTATNOF = FTSE Total Non-Financial (sub-index); FTSE All-Share TBD.
+  #   FR: FTEFRFY = FTSEUR1ST 300 France (JPY-denominated); EUR version TBD.
+  #   BR: D2BRFS$ = DJGL Brazil Financial Services; Bovespa (BOVESPA) TBD.
+  #   PH: not included (only candidate found, PSEMINE, is the Mining & Oil sub-index; PSEi TBD).
+  - name: ds_equity_indices
+    source: wrds_ds_index
+    start: "1950-01-01"
+    incremental_key: valuedate
+    fields: [pi_, ri]
+    mnemonics:
+      # Developed Markets — Americas
+      - DJINDUS    # US: Dow Jones Industrials (1950–present, USD)
+      - TTOCOMP    # Canada: S&P/TSX Composite (1950–present, CAD)
+      # Developed Markets — Europe
+      - DAXINDX    # Germany: DAX Performance (1964–present, EUR)
+      - FTATNOF    # UK: FTSE Total Non-Financial (1964–present, GBP)
+      - FTEFRFY    # France: FTSEUR1ST 300 France (1985–present, JPY)
+      - FITMISE    # Italy: FTSE Italia MIB Storico (1975–present, EUR)
+      - MADRIDI    # Spain: Madrid SE General IGBM (1974–present, EUR)
+      - AMSTEOE    # Netherlands: AEX Index (1983–present, EUR)
+      - BRUSIDX    # Belgium: BEL All Share (1980–present, EUR)
+      - OMXAFGX    # Sweden: OMX Affarsvarlden General (1980–present, SEK)
+      - FTENOKE    # Norway: FTSEUR1ST 300 Norway EUR (1985–present, EUR)
+      - FTEDKKE    # Denmark: FTSEUR1ST 300 Denmark EUR (1985–present, EUR)
+      - WIFINDL    # Finland: FTSE Finland (1987–present, EUR)
+      - FTECHFY    # Switzerland: FTSEUR1ST 300 Switzerland (1985–present, JPY)
+      - WIASTR$    # Austria: FTSE Austria (1981–present, USD)
+      - POPSIGN    # Portugal: PSI All-Share (1988–present, EUR)
+      - GRAGENL    # Greece: ATHEX Composite (1988–present, EUR)
+      - ISEQUIT    # Ireland: ISEQ All Share (1983–present, EUR)
+      # Developed Markets — Asia-Pacific
+      - JAPDOWA    # Japan: Nikkei 225 (1950–present, JPY)
+      - AUSTOLD    # Australia: ASX All Ordinaries (1971–present, AUD)
+      - WINZEAL    # New Zealand: FTSE New Zealand (1981–present, NZD)
+      - HNGKNGI    # Hong Kong: Hang Seng (1964–present, HKD)
+      - WISNGP$    # Singapore: FTSE W Singapore USD (1981–present, USD)
+      - ISTGENS    # Israel: Tel Aviv SE General (1984–present, ILS)
+      # Emerging Markets — Asia
+      - CHSCOMP    # China: Shanghai SE Composite (1990–present, CNY)
+      - IBOMSEN    # India: BSE Sensex (1979–present, INR)
+      - KORCOMP    # South Korea: KOSPI (1974–present, KRW)
+      - TAIWGHT    # Taiwan: TAIEX Weighted (1971–present, TWD)
+      - FBMKLCI    # Malaysia: FTSE Bursa KLCI (1980–present, MYR)
+      - BNGKSET    # Thailand: Bangkok SET (1975–present, THB)
+      - JAKCOMP    # Indonesia: IDX Composite (1983–present, IDR)
+      - PKSE100    # Pakistan: Karachi SE 100 (1988–present, PKR)
+      - HCMNVNE    # Vietnam: Ho Chi Minh SE (2000–present, VND)
+      # Emerging Markets — Latin America
+      - WIMXCOL    # Mexico: FTSE W Mexico (1981–present, MXN)
+      - D2BRFS$    # Brazil: DJGL Brazil Financial Services USD (note: not Bovespa)
+      - ARGMERV    # Argentina: S&P Merval (1989–present, ARS)
+      - IGPAGEN    # Chile: S&P/CLX IGPA (1987–present, CLP)
+      # Emerging Markets — EMEA
+      - EGHREFG    # Egypt: EFG Index (1993–present, EGP)
+      - NSEINDX    # Kenya: NSE20 (1990–present, KES)
+      - IFGDNG$    # Nigeria: S&P Nigeria BMI USD (1995–present)
+      - WISAFRL    # South Africa: FTSE South Africa (1981–present, ZAR)
+      - TRKISTB    # Turkey: BIST National 100 (1988–present, TRY)
+      - WIRUSSL    # Russia: FTSE Russia USD (1997–2024)
+      - WIPLNDL    # Poland: FTSE Poland PLN (1993–present)
+      - BUXINDX    # Hungary: Budapest BUX (1991–present, HUF)
+      - SBECZRL    # Czech Republic: S&P Czech Republic CZK (1994–present)
+      - IFGDSBL    # Saudi Arabia: S&P Saudi Arabia BMI SAR (1997–present)
+    note: >
+      Country equity price (pi_) and total return (ri) indices from LSEG Datastream
+      via WRDS tr_ds_equities. Selection: active index with longest history per country.
+      See inline comments for currency and known caveats (GB, FR, BR; PH not included).
+      ri is empty for ARGMERV AUSTOLD BRUSIDX BUXINDX EGHREFG HCMNVNE IGPAGEN ISTGENS
+      JAKCOMP MADRIDI NSEINDX OMXAFGX PKSE100 TRKISTB.
+
+  # ── CFTC Commitments of Traders: FX futures positions by sector ──────────────
+  # Weekly. Positions as of Tuesday, released Friday 3:30pm ET.
+  # Source: CFTC Socrata API (publicreporting.cftc.gov) — no API key needed.
+  # NOTE: CME's own site (cmegroup.com) is Akamai-protected and returns HTTP 403,
+  # so exchange-side data is not scriptable; CFTC is the route for positioning.
+  #
+  # TFF = Traders in Financial Futures. Sector split:
+  #   dealer     Dealer/Intermediary (sell-side)
+  #   asset_mgr  Asset Manager/Institutional
+  #   lev_money  Leveraged Funds (hedge funds — the usual "spec positioning")
+  #   other_rept Other Reportables
+  #   nonrept    Non-Reportable (small traders)
+  # long/short EXCLUDE spreading, which is a separate column.
+  # Net positioning = long - short.
+  # FILTER BY CODE, NOT NAME. Verified 2026-07-24 against the live API:
+  #   - Exchange name changed IMM -> CHICAGO MERCANTILE EXCHANGE on 2000-08-29.
+  #     An exchange filter of "CHICAGO MERCANTILE EXCHANGE" silently drops all
+  #     pre-2000 history (14.5 years for the majors).
+  #   - Contract names are rewritten retroactively: 112741 now reads "NZ DOLLAR"
+  #     for its entire history in contract_market_name, but pre-2022-02-08 rows
+  #     still say "NEW ZEALAND DOLLAR" in market_and_exchange_names.
+  # cftc_contract_market_code is stable across both and unique per exchange.
+  - name: cftc_fx_tff
+    source: cftc
+    report: tff
+    start: "2006-06-13"
+    incremental_key: date
+    contract_codes:
+      - "099741"   # EUR  EURO FX             2006-06-13 –
+      - "097741"   # JPY  JAPANESE YEN        2006-06-13 –
+      - "096742"   # GBP  BRITISH POUND       2006-06-13 –
+      - "092741"   # CHF  SWISS FRANC         2006-06-13 –
+      - "090741"   # CAD  CANADIAN DOLLAR     2006-06-13 –
+      - "232741"   # AUD  AUSTRALIAN DOLLAR   2006-06-13 –
+      - "112741"   # NZD  NZ DOLLAR           2006-06-13 –  (was NEW ZEALAND DOLLAR)
+      - "095741"   # MXN  MEXICAN PESO        2006-06-13 –
+      - "102741"   # BRL  BRAZILIAN REAL      2011-04-05 –
+      - "122741"   # ZAR  SO AFRICAN RAND     2010-03-09 –
+      - "299741"   # EUR/GBP cross           2014-06-10 –
+      - "399741"   # EUR/JPY cross           2017-08-01 –
+      - "089741"   # RUB  RUSSIAN RUBLE       2009-02-10 – 2022-03-15 (dead, sanctions)
+    note: >
+      CFTC Traders in Financial Futures — CME FX, weekly, 13 contracts from 2006-06-13.
+      Sectors: dealer, asset_mgr, lev_money, other_rept, nonrept — each long/short,
+      plus spreading for all but nonrept. long/short EXCLUDE spreading; net = long - short.
+      Russian ruble ends 2022-03-15 (same sanctions cutoff as MSCI Russia).
+      For longer history with coarser categories use cftc_fx_legacy (to 1986).
+
+  # Legacy COT: only commercial / non-commercial / non-reportable, but history
+  # runs to 1986-01-15 — 20 more years than TFF for the majors.
+  - name: cftc_fx_legacy
+    source: cftc
+    report: legacy
+    start: "1986-01-15"
+    incremental_key: date
+    contract_codes:
+      - "099741"   # EUR  1999-01-05 – (see caveat below; 10 stray ECU obs in 1986)
+      - "097741"   # JPY  1986-01-15 –
+      - "096742"   # GBP  1988-04-29 –
+      - "092741"   # CHF  1986-01-15 –
+      - "090741"   # CAD  1986-01-15 –
+      - "232741"   # AUD  1987-01-30 –
+      - "112741"   # NZD  1999-01-05 –
+      - "095741"   # MXN  1995-05-23 –
+      - "102741"   # BRL  1995-11-21 –
+      - "122741"   # ZAR  1998-06-02 –
+      - "089741"   # RUB  1998-05-05 – 2022-03-15
+    note: >
+      CFTC legacy Commitments of Traders — CME FX, weekly from 1986-01-15.
+      Categories: noncomm (speculators), comm (hedgers), nonrept (small traders).
+      CAVEAT on code 099741 (EURO FX): the euro contract begins 1999-01-05. The
+      same code also carries 10 observations from 1986-01-15 to 1986-08-29 that are
+      the EUROPEAN CURRENCY UNIT (ECU) contract, followed by a 12-year gap. These
+      are a different instrument — drop them rather than splicing into a EUR series.
+      clean/cftc_fx.py excludes them.

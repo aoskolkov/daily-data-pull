@@ -1,0 +1,4 @@
+wrds:
+  username_env: WRDS_USERNAME   # process env var; falls back to HKEY_CURRENT_USER\Environment on Windows
+  password_env: WRDS_PASSWORD
+  # First connection interactively sets up ~/.pgpass; subsequent runs use it silently.

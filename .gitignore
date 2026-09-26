@@ -1,0 +1,55 @@
+﻿# ── Raw pulled data (large Parquet files, not tracked) ───────────────────────
+data/
+macrodata/
+downloads/
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# ── Virtual environments ──────────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Credentials / secrets ─────────────────────────────────────────────────────
+.env
+.env.*
+*.pgpass
+pgpass.conf
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/settings.json
+*.code-workspace
+
+# ── Temporary / scratch files ─────────────────────────────────────────────────
+*.tmp
+*.bak
+*.log
+densities/
+
+# ── Legacy / large binary data files ──────────────────────────────────────────
+old_data/
+
+# ── Externally sourced data (not pulled by pipeline) ──────────────────────────
+msci/
+research_availability.py
+research_availability.png
+research_availability_detail.png
