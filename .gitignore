@@ -50,6 +50,11 @@ densities/
 
 # ── Legacy / large binary data files ──────────────────────────────────────────
 old_data/
+fx_daily.csv
+fx_large_movement_dates.txt
+fx_log_change_stats_*.txt
+analyze_fx.py
+download_fx.py
 
 # ── Externally sourced data (not pulled by pipeline) ──────────────────────────
 msci/
