@@ -148,9 +148,12 @@ config/
   datasets.yaml          # dataset manifest — add new datasets here
   connection.yaml        # env-var names for WRDS credentials
   currency_country.csv   # ISO currency ↔ country crosswalk
+  paths.example.yaml     # template for paths.yaml (where data/ and macrodata/ live)
+  paths.yaml             # your copy, git-ignored — see "Where the data goes"
 
 src/
   cli.py                 # entry point (wrdsdl.py)
+  paths.py               # resolves data_root() / macrodata_root()
   adapters/              # one adapter per data source type
     wrds_sql.py          # generic Compustat/WRDS SQL table pull
     datastream.py        # single-mnemonic Datastream commodity series
@@ -169,6 +172,7 @@ src/
     msci_web.py          # MSCI country index levels (public webapp endpoint)
 
 clean/                   # one script per output family
+  _paths.py              # DATA_ROOT / MACRODATA_ROOT for the standalone scripts
   fx_spot.py             # → macrodata/fx_spot/
   fx_forward.py          # → macrodata/fx_forward/
   oil.py                 # → macrodata/oil/
@@ -187,14 +191,17 @@ clean/                   # one script per output family
   tic.py                 # → macrodata/tic/tic_holdings_wide.{parquet,csv}
   bis_debt_sec.py        # → macrodata/bis_debt_sec/bis_debt_sec_by_{nat,res}_wide.{parquet,csv}
   bis_lbs.py             # → macrodata/bis_lbs/bis_lbs_wide.{parquet,csv}
-  bis_eer.py             # → macrodata/bis_eer/{reer,neer}_wide.{parquet,csv}
+  bis_eer.py             # → macrodata/bis_eer/{reer,neer}{,_narrow,_broad}_wide.{parquet,csv}
+  bis_cpi.py             # → macrodata/bis_cpi/  (long CPI: monthly 1913–, annual 1700–)
   imf_weo.py             # → macrodata/imf_weo/weo_{subject}_wide.{parquet,csv} + weo_long.parquet
   msci.py                # → macrodata/msci/
   cftc_fx.py             # → macrodata/cftc_fx/
   partial_default.py     # → macrodata/sovereign_debt/
 
 data/                    # raw Parquet from pull pipeline (one folder per dataset)
-macrodata/                  # clean wide-format outputs (Parquet + CSV)
+macrodata/               # clean wide-format outputs (Parquet + CSV)
+                         # both are git-ignored and can live outside the repo —
+                         # see "Where the data goes" above
 ```
 
 ---
