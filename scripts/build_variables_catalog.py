@@ -15,10 +15,24 @@ Usage:
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from src.paths import macrodata_root                                    # noqa: E402
+
+MACRODATA = macrodata_root()
+
+
+def resolve(path_rel: str) -> Path:
+    """CATALOG paths are written as macrodata/... ; the files may live elsewhere."""
+    rel = Path(path_rel)
+    if rel.parts and rel.parts[0] == "macrodata":
+        return MACRODATA.joinpath(*rel.parts[1:])
+    return ROOT / rel
 
 # ---------------------------------------------------------------------------
 # Hand-curated catalog entries
@@ -27,6 +41,67 @@ ROOT = Path(__file__).resolve().parent.parent
 #   id_cols    non-date identifier columns to exclude from a wide file's series count
 # ---------------------------------------------------------------------------
 CATALOG: list[dict] = [
+    # ── BIS long CPI and narrow-basket effective exchange rates ─────────────
+    dict(
+        variable_id="bis_reer_narrow",
+        path="macrodata/bis_eer/reer_narrow_wide.parquet",
+        description="BIS real effective exchange rate, narrow basket (27 economies incl. euro area XM), monthly from 1964-01 — 30 years more history than the broad basket (bis_reer_broad). CPI-deflated, trade-weighted.",
+        family="fx",
+        frequency="monthly",
+        source="BIS Statistics API (WS_EER)",
+        unit="index, 2020=100",
+        panel_columns="ISO2 country code",
+    ),
+    dict(
+        variable_id="bis_neer_broad",
+        path="macrodata/bis_eer/neer_broad_wide.parquet",
+        description="BIS nominal effective exchange rate, broad basket (64 economies incl. XM), monthly from 1994-01.",
+        family="fx",
+        frequency="monthly",
+        source="BIS Statistics API (WS_EER)",
+        unit="index, 2020=100",
+        panel_columns="ISO2 country code",
+    ),
+    dict(
+        variable_id="bis_cpi_index_monthly",
+        path="macrodata/bis_cpi/cpi_index_monthly_wide.parquet",
+        description="BIS long consumer price index, monthly, 63 economies from 1913-01 (US 1913, CA 1914, GB 1915; 23 economies start before 1950). Longer than cpi_monthly_index (IMF IFS via Datastream, 1950-, 164 countries) but fewer economies.",
+        family="inflation",
+        frequency="monthly",
+        source="BIS Statistics API (WS_LONG_CPI, unit 628)",
+        unit="index, 2010=100",
+        panel_columns="ISO2 country code",
+    ),
+    dict(
+        variable_id="bis_cpi_yoy_monthly",
+        path="macrodata/bis_cpi/cpi_yoy_monthly_wide.parquet",
+        description="BIS consumer price inflation, monthly year-on-year, 63 economies from 1914. Published by the BIS, not recomputed (US +23.7% in 1920-06, -6.6% in 1933-06).",
+        family="inflation",
+        frequency="monthly",
+        source="BIS Statistics API (WS_LONG_CPI, unit 771)",
+        unit="per cent per year",
+        panel_columns="ISO2 country code",
+    ),
+    dict(
+        variable_id="bis_cpi_index_annual",
+        path="macrodata/bis_cpi/cpi_index_annual_wide.parquet",
+        description="BIS long consumer price index, annual, 63 economies, from 1700 (GB 1700, SE 1830, IS 1849, BE 1850). The longest price history in this repo.",
+        family="inflation",
+        frequency="annual",
+        source="BIS Statistics API (WS_LONG_CPI, unit 628)",
+        unit="index, 2010=100",
+        panel_columns="ISO2 country code",
+    ),
+    dict(
+        variable_id="bis_cpi_yoy_annual",
+        path="macrodata/bis_cpi/cpi_yoy_annual_wide.parquet",
+        description="BIS consumer price inflation, annual year-on-year, 63 economies, from 1700.",
+        family="inflation",
+        frequency="annual",
+        source="BIS Statistics API (WS_LONG_CPI, unit 771)",
+        unit="per cent per year",
+        panel_columns="ISO2 country code",
+    ),
     # ── Trade in goods (IMF ITG + IMTS) ─────────────────────────────────────
     dict(
         variable_id="trade_goods_exports_monthly",
@@ -1025,7 +1100,7 @@ def main() -> None:
     rows = []
     for entry in CATALOG:
         path_rel = entry["path"]
-        path_abs  = ROOT / path_rel
+        path_abs  = resolve(path_rel)
 
         stats = read_parquet_stats(
             path_abs, entry.get("series_by"), entry.get("id_cols", ())

@@ -30,7 +30,7 @@ except ImportError:
     sys.exit(1)
 
 from .connection import get_env_credential, wrds_connection
-from . import discovery, normalize, storage, state, catalog
+from . import discovery, normalize, storage, state, catalog, paths
 from .adapters import wrds_sql, datastream, wrds_fut, wrds_fx, wrds_ds_comds, wrds_ds_index, wrds_ds_econ, external, imf as imf_adapter, tic, bis, imf_weo, msci_web, cftc, wb_api
 
 
@@ -48,9 +48,14 @@ def load_config(config_dir: str = "config") -> tuple[dict, list[dict]]:
 
     defaults = manifest.get("defaults", {})
     datasets: list[dict] = manifest.get("datasets", [])
+    default_root = defaults.get("storage_root", "./data")
     for ds in datasets:
         for k, v in defaults.items():
             ds.setdefault(k, v)
+        # DDP_DATA_ROOT / config/paths.yaml win over the manifest default, so the
+        # data can live outside the repo; an explicit per-dataset storage_root wins.
+        if ds["storage_root"] == default_root:
+            ds["storage_root"] = str(paths.data_root())
 
     conn_config: dict = {}
     conn_yaml = config_path / "connection.yaml"
@@ -303,6 +308,7 @@ _CLEAN_SCRIPTS: list[tuple[str, list[str]]] = [
     ("clean/bis_debt_sec.py",   []),
     ("clean/bis_lbs.py",        []),
     ("clean/bis_eer.py",        []),
+    ("clean/bis_cpi.py",        []),
     ("clean/imf_weo.py",        []),
     ("clean/msci.py",           []),
     ("clean/cftc_fx.py",        []),

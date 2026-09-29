@@ -30,11 +30,12 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_OUTPUT = "macrodata/oil"
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "oil")
 
-DS_INPUT = "data/ds_wti_front"
-FRED_INPUT = "data/fred_wti_spot"
+DS_INPUT = str(DATA_ROOT / "ds_wti_front")
+FRED_INPUT = str(DATA_ROOT / "fred_wti_spot")
 
 
 def parse_args() -> argparse.Namespace:

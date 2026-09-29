@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean oil futures term structure from WRDS individual contract data.
 
 WTI (NYMEX CL):  months 1-12 via ds_wti_curve  (NWS{MMYY} contracts, source=wrds_fut)
@@ -48,9 +48,10 @@ from pathlib import Path
 
 import pandas as pd
 import numpy as np
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_OUTPUT = "macrodata/oil_curve"
-STORAGE_ROOT = "data"
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "oil_curve")
+STORAGE_ROOT = str(DATA_ROOT)
 
 # Dataset name -> (commodity label, mnemonic root for auto-numbering)
 CURVE_DATASETS: dict[str, tuple[str, str]] = {

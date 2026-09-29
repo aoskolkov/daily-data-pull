@@ -24,7 +24,7 @@ Config keys (datasets.yaml)
              # A blank position is the wildcard; "A" is a literal code (often
              # "all"/"total" in BIS codelists), so it filters to that code.
   start:     "1993-01-01"
-  period_format: quarterly   # or monthly / daily — must match FREQ for startPeriod
+  period_format: quarterly   # or monthly / daily / annual — must match FREQ for startPeriod
   incremental_key: date
 
 Output columns
@@ -152,12 +152,15 @@ def _date_to_period(d: str, fmt: str = "quarterly") -> str:
     fmt: 'quarterly' → YYYY-Q#  (default, for WS_DEBT_SEC2_PUB etc.)
          'monthly'   → YYYY-MM   (for WS_EER monthly)
          'daily'     → YYYY-MM-DD (for WS_CBPOL daily)
+         'annual'    → YYYY       (for WS_LONG_CPI annual)
     """
     dt = pd.to_datetime(d)
     if fmt == "daily":
         return dt.strftime("%Y-%m-%d")
     if fmt == "monthly":
         return dt.strftime("%Y-%m")
+    if fmt == "annual":
+        return str(dt.year)
     q = (dt.month - 1) // 3 + 1
     return f"{dt.year}-Q{q}"
 

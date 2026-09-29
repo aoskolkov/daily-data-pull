@@ -34,8 +34,9 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_OUTPUT = "macrodata/bilateral"
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "bilateral")
 
 # Indicator labels (portfolio_total, fdi_inward_total, ...) are assigned by the
 # adapter from `labels:` in datasets.yaml; the IMF now publishes CPIS as PIP and
@@ -46,7 +47,7 @@ CDIS_LABELS: dict[str, str] = {}
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Clean IMF CPIS/CDIS bilateral position data.")
-    p.add_argument("--storage-root", default="data")
+    p.add_argument("--storage-root", default=str(DATA_ROOT))
     p.add_argument("--output", default=DEFAULT_OUTPUT)
     p.add_argument("--source", choices=["cpis", "cdis", "all"], default="all")
     p.add_argument("--matrix", metavar="YEAR", type=int, default=None,

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean script for US Treasury TIC Major Foreign Holders data.
 
 Input:  data/tic_foreign_holders/
@@ -18,10 +18,11 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data" / "tic_foreign_holders"
-OUT  = ROOT / "macrodata" / "tic"
+DATA = DATA_ROOT / "tic_foreign_holders"
+OUT  = MACRODATA_ROOT / "tic"
 
 
 def load() -> pd.DataFrame:

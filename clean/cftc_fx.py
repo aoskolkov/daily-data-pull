@@ -23,11 +23,12 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parents[1]
-TFF_DIR = ROOT / "data" / "cftc_fx_tff"
-LEGACY_DIR = ROOT / "data" / "cftc_fx_legacy"
-OUT_DIR = ROOT / "macrodata" / "cftc_fx"
+TFF_DIR = DATA_ROOT / "cftc_fx_tff"
+LEGACY_DIR = DATA_ROOT / "cftc_fx_legacy"
+OUT_DIR = MACRODATA_ROOT / "cftc_fx"
 
 # Stable contract code → ISO currency. Verified against the live API 2026-07-24.
 CODE_TO_CCY = {

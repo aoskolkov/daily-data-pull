@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean script for IMF World Economic Outlook (WEO) data.
 
 Input:  data/imf_weo/
@@ -21,10 +21,11 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data" / "imf_weo"
-OUT  = ROOT / "macrodata" / "imf_weo"
+DATA = DATA_ROOT / "imf_weo"
+OUT  = MACRODATA_ROOT / "imf_weo"
 
 
 def load() -> pd.DataFrame:

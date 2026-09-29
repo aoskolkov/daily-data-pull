@@ -31,10 +31,11 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "data"
-OUT = ROOT / "macrodata" / "trade"
+DATA = DATA_ROOT
+OUT = MACRODATA_ROOT / "trade"
 
 _ISO3 = r"^[A-Z]{3}$"
 

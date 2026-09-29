@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean inflation data from raw downloads.
 
 Sources
@@ -34,12 +34,13 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_OUTPUT = "macrodata/inflation"
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "inflation")
 
-WB_CPI_INPUT = "data/wb_cpi"
-WB_INF_INPUT = "data/wb_inflation"
-OECD_INPUT = "data/oecd_cpi"
+WB_CPI_INPUT = str(DATA_ROOT / "wb_cpi")
+WB_INF_INPUT = str(DATA_ROOT / "wb_inflation")
+OECD_INPUT = str(DATA_ROOT / "oecd_cpi")
 
 
 def parse_args() -> argparse.Namespace:

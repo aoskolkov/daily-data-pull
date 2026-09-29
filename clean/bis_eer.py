@@ -1,19 +1,27 @@
 """
 Clean BIS effective exchange rate data → macrodata/bis_eer/.
 
-Reads:  data/bis_eer_real/     (REER, broad basket, 64 countries, monthly 1994–)
-        data/bis_eer_nominal/  (NEER, narrow basket, 26 countries, monthly 1964–)
-Writes: macrodata/bis_eer/reer_wide.{parquet,csv}   — real EER (ISO2 columns)
-        macrodata/bis_eer/neer_wide.{parquet,csv}   — nominal EER (ISO2 columns)
+Reads:  data/bis_eer_real/           (REER, broad basket, 64 economies, monthly 1994–)
+        data/bis_eer_nominal/        (NEER, narrow basket, 26, monthly 1964–)
+        data/bis_eer_real_narrow/    (REER, narrow basket, 27, monthly 1964–)
+        data/bis_eer_nominal_broad/  (NEER, broad basket, 64, monthly 1994–)
+Writes: macrodata/bis_eer/reer_wide.{parquet,csv}         — real EER, broad (ISO2 columns)
+        macrodata/bis_eer/neer_wide.{parquet,csv}         — nominal EER, narrow
+        macrodata/bis_eer/reer_narrow_wide.{parquet,csv}  — real EER, narrow (the long one, 1964–)
+        macrodata/bis_eer/neer_broad_wide.{parquet,csv}   — nominal EER, broad
+
+The broad basket covers more economies (64) but starts only in 1994; the narrow
+basket (26–27) goes back to 1964. Index 2020=100.
 """
 
 import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT_DIR = ROOT / "macrodata" / "bis_eer"
+OUT_DIR = MACRODATA_ROOT / "bis_eer"
 
 
 def _clean_one(data_dir: Path, label: str, no_csv: bool) -> None:
@@ -41,8 +49,10 @@ def _clean_one(data_dir: Path, label: str, no_csv: bool) -> None:
 
 
 def main(no_csv: bool = False) -> None:
-    _clean_one(ROOT / "data" / "bis_eer_real",    "reer_wide",  no_csv)
-    _clean_one(ROOT / "data" / "bis_eer_nominal", "neer_wide",  no_csv)
+    _clean_one(DATA_ROOT / "bis_eer_real",           "reer_wide",        no_csv)
+    _clean_one(DATA_ROOT / "bis_eer_nominal",        "neer_wide",        no_csv)
+    _clean_one(DATA_ROOT / "bis_eer_real_narrow",    "reer_narrow_wide", no_csv)
+    _clean_one(DATA_ROOT / "bis_eer_nominal_broad",  "neer_broad_wide",  no_csv)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean interest rate data: BIS central bank policy rates and Datastream bond yields.
 
 Sources:
@@ -20,8 +20,9 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-OUT_DIR = Path("macrodata/interest_rates")
+OUT_DIR = MACRODATA_ROOT / "interest_rates"
 
 # Map Datastream bond yield mnemonics → ISO 3166-1 alpha-2 country codes
 # (or XM for Eurozone)
@@ -86,7 +87,7 @@ def save(df: pd.DataFrame, path: Path, write_csv: bool) -> None:
 
 
 def clean_cbpol(write_csv: bool) -> None:
-    src = Path("data/bis_cbpol")
+    src = DATA_ROOT / "bis_cbpol"
     if not src.exists():
         print("SKIP cbpol: data/bis_cbpol not found (run: python wrdsdl.py pull bis_cbpol)")
         return
@@ -124,7 +125,7 @@ def clean_cbpol(write_csv: bool) -> None:
 
 
 def clean_bond_yields(write_csv: bool) -> None:
-    src = Path("data/ds_bond_yields_10y")
+    src = DATA_ROOT / "ds_bond_yields_10y"
     if not src.exists():
         print("SKIP bond yields: data/ds_bond_yields_10y not found "
               "(run: python wrdsdl.py pull ds_bond_yields_10y)")

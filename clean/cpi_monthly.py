@@ -11,10 +11,11 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "ds_cpi_monthly"
-OUT_DIR = ROOT / "macrodata" / "cpi_monthly"
+DATA_DIR = DATA_ROOT / "ds_cpi_monthly"
+OUT_DIR = MACRODATA_ROOT / "cpi_monthly"
 
 # Datastream mnemonic -> country name (from wrds_ecoinfo.mktdesc)
 _MNEMONIC_TO_COUNTRY: dict[str, str] = {

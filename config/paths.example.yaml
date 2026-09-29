@@ -1,0 +1,14 @@
+# Where the data lives on this machine. Copy to config/paths.yaml and edit.
+#
+# config/paths.yaml is NOT tracked by git: each machine points at its own folders,
+# while the repo carries only code. Without it (or the DDP_DATA_ROOT /
+# DDP_MACRODATA_ROOT environment variables, which take precedence) the pipeline
+# falls back to ./data and ./macrodata inside the repo, so a fresh clone works.
+#
+# Use forward slashes on Windows; ~ is expanded.
+
+# Raw Parquet from `wrdsdl.py pull` (one subfolder per dataset, ~330 MB)
+data_root: C:/Users/ao7054/Dropbox/daily-data-raw
+
+# Cleaned wide/long outputs from `wrdsdl.py clean` (~950 MB, mostly CSV)
+macrodata_root: C:/Users/ao7054/Dropbox/macrodata

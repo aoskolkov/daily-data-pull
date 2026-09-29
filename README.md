@@ -32,7 +32,8 @@ A config-driven pipeline for pulling, storing, and cleaning financial and macroe
 | Quarterly balance of payments (IMF IFS) | Quarterly | WRDS Datastream (tr_ds_econ) | 1970–present, 11 aggregates × ~110–120 countries |
 | BIS international debt securities | Quarterly | BIS Statistics API | 1993–present, amounts outstanding, ~155 countries |
 | BIS locational banking statistics | Quarterly | BIS Statistics API | 2000–present, 48 reporting countries, cross-border claims |
-| BIS effective exchange rates | Monthly | BIS Statistics API | real broad 1994–present (64 economies), nominal narrow 1964–present (26) |
+| BIS effective exchange rates | Monthly | BIS Statistics API | broad basket 1994–present (64 economies), narrow basket 1964–present (26–27); real and nominal for both |
+| BIS long consumer prices | Monthly + annual | BIS Statistics API | monthly 1913–present, annual **1700**–present, 63 economies; index and year-on-year |
 | US Treasury TIC foreign holders | Monthly | US Treasury | 2000–present, 53 countries |
 | CFTC FX futures positioning | Weekly | CFTC API | 2006–present (TFF, 13 contracts), 1986–present (legacy, 11 contracts) |
 | Central bank policy rates | Daily | BIS Statistics API | 1946–present (GB, JP, …; US from 1954), 48 countries + euro area |
@@ -55,6 +56,25 @@ A config-driven pipeline for pulling, storing, and cleaning financial and macroe
 ```bash
 pip install -r requirements.txt
 ```
+
+### Where the data goes
+
+Raw Parquet (`pull`) and cleaned outputs (`clean`) are **not** tracked by git. By
+default they land in `./data` and `./macrodata` inside the repo, so a fresh clone
+works with no configuration.
+
+To keep them elsewhere — a Dropbox folder shared with coauthors, say — copy
+`config/paths.example.yaml` to `config/paths.yaml` (git-ignored) and set:
+
+```yaml
+data_root: C:/Users/you/Dropbox/daily-data-raw    # ~330 MB, re-downloadable
+macrodata_root: C:/Users/you/Dropbox/macrodata    # ~950 MB of outputs
+```
+
+The environment variables `DDP_DATA_ROOT` and `DDP_MACRODATA_ROOT` override the
+file. Moving existing data is just a move: the pipeline reads the new location on
+the next run, and nothing in git changes. Note the outputs are CSV-heavy (~790 MB
+CSV vs ~210 MB Parquet) — run `python wrdsdl.py clean --no-csv` to skip the CSVs.
 
 Set your WRDS credentials as environment variables. The pipeline reads these at startup — no credentials are stored in files in this repo.
 

@@ -310,6 +310,65 @@ datasets:
       Index 2020=100. Narrow basket has longer history from 1964 vs broad (1994).
       Source: BIS Statistics API (stats.bis.org) dataflow WS_EER.
 
+  # ── BIS effective exchange rates, narrow basket (long history) ──────────────
+  # Same dataflow as bis_eer_real / bis_eer_nominal, other basket. The narrow
+  # basket (27 economies) starts 1964-01; the broad one (64) only 1994-01, so the
+  # narrow REER is the long real-exchange-rate series. Verified 2026-09-29.
+  - name: bis_eer_real_narrow
+    source: bis
+    dataflow: WS_EER
+    key: M.R.N.
+    period_format: monthly
+    start: "1964-01-01"
+    incremental_key: date
+    lookback_days: 62
+    note: >
+      BIS real effective exchange rate, narrow basket (27 economies incl. XM),
+      monthly 1964-01–present, index 2020=100. 30 years more history than the
+      broad basket (bis_eer_real). Clean: macrodata/bis_eer/reer_narrow_wide.
+
+  - name: bis_eer_nominal_broad
+    source: bis
+    dataflow: WS_EER
+    key: M.N.B.
+    period_format: monthly
+    start: "1994-01-01"
+    incremental_key: date
+    lookback_days: 62
+    note: >
+      BIS nominal effective exchange rate, broad basket (64 economies incl. XM),
+      monthly 1994-01–present, index 2020=100. Clean: macrodata/bis_eer/neer_broad_wide.
+
+  # ── BIS long consumer price series ──────────────────────────────────────────
+  # Dataflow WS_LONG_CPI, key FREQ.REF_AREA.UNIT_MEASURE. 63 economies.
+  # UNIT_MEASURE 628 = index (2010=100), 771 = year-on-year change in per cent.
+  # Far longer than ds_cpi_monthly (IMF IFS via Datastream, 1950–, 164 countries)
+  # but fewer economies: monthly from 1913 (US 1913, CA 1914, GB 1915; 23 economies
+  # start before 1950), annual from 1700 (GB 1700, SE 1830, IS 1849, BE 1850).
+  - name: bis_cpi_long_m
+    source: bis
+    dataflow: WS_LONG_CPI
+    key: M..628+771
+    period_format: monthly
+    start: "1913-01-01"
+    incremental_key: date
+    lookback_days: 365
+    note: >
+      BIS consumer prices, monthly, 63 economies, 1913-01–present. Index
+      (2010=100) and year-on-year per cent. Clean: macrodata/bis_cpi/.
+
+  - name: bis_cpi_long_a
+    source: bis
+    dataflow: WS_LONG_CPI
+    key: A..628+771
+    period_format: annual
+    start: "1700-01-01"
+    incremental_key: date
+    lookback_days: 1095
+    note: >
+      BIS consumer prices, annual, 63 economies, 1700–present (UK from 1700).
+      Index (2010=100) and year-on-year per cent.
+
   # ── MSCI Standard country equity indices ─────────────────────────────────────
   # Monthly, USD gross total return + price index levels.
   # 45 countries (Russia excluded — MSCI suspended Feb 2022; endpoint returns HTTP 500).

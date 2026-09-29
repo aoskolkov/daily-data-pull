@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean FX spot rates from raw WRDS data.
 
 Reads raw comp.exrt_dly Parquet (pulled by wrdsdl) and produces:
@@ -36,9 +36,10 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_INPUT = "data/fx_spot"
-DEFAULT_OUTPUT = "macrodata/fx_spot"
+DEFAULT_INPUT = str(DATA_ROOT / "fx_spot")
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "fx_spot")
 
 
 def parse_args() -> argparse.Namespace:

@@ -34,8 +34,9 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_OUTPUT = "macrodata/capital_flows"
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "capital_flows")
 
 # Indicator labels are assigned by the adapter from `labels:` in datasets.yaml
 # (api.imf.org codes such as A_NFA_T.D_F -> fdi_assets). Portfolio equity/debt
@@ -48,7 +49,7 @@ DERIVED_NETS: dict[str, tuple[str, str]] = {
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Clean IMF BOP/IIP data to wide and panel formats.")
-    p.add_argument("--storage-root", default="data")
+    p.add_argument("--storage-root", default=str(DATA_ROOT))
     p.add_argument("--output", default=DEFAULT_OUTPUT)
     p.add_argument("--source", choices=["bop", "iip", "all"], default="all")
     p.add_argument("--no-csv", action="store_false", dest="csv")

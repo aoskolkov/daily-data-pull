@@ -29,9 +29,10 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_OUTPUT = "macrodata/vol"
-STORAGE_ROOT = "data"
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "vol")
+STORAGE_ROOT = str(DATA_ROOT)
 
 # (dataset_name, output column name)
 VIX_SERIES: list[tuple[str, str]] = [

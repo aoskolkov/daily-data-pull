@@ -1,4 +1,4 @@
-﻿# ── Raw pulled data (large Parquet files, not tracked) ───────────────────────
+# ── Raw pulled data (large Parquet files, not tracked) ───────────────────────
 data/
 macrodata/
 downloads/
@@ -19,6 +19,9 @@ build/
 venv/
 env/
 ENV/
+
+# ── Machine-specific data locations ───────────────────────────────────────────
+config/paths.yaml
 
 # ── Credentials / secrets ─────────────────────────────────────────────────────
 .env

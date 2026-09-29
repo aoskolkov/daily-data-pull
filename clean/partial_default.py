@@ -42,10 +42,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA = ROOT / "data"
-OUT = ROOT / "macrodata" / "sovereign_debt"
+DATA = DATA_ROOT
+OUT = MACRODATA_ROOT / "sovereign_debt"
 
 # The paper's sample: the 37 EMBI+ countries (online appendix), 1970–2019.
 EMBI37 = ("ARG BGR BLZ BRA CHL DOM ECU GAB GHA IDN JAM MAR MEX NGA PAK PAN PER PHL POL "

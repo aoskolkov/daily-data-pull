@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean Datastream commodity prices to wide format.
 
 Sources (all from tr_ds_comds via wrds_ds_comds adapter)
@@ -35,6 +35,7 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 DATASETS: dict[str, str] = {
     "ds_metals":        "metals",
@@ -43,8 +44,8 @@ DATASETS: dict[str, str] = {
     "ds_comdy_indices": "indices",
 }
 
-DEFAULT_STORAGE = "data"
-DEFAULT_OUTPUT  = "macrodata/commodities"
+DEFAULT_STORAGE = str(DATA_ROOT)
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "commodities")
 
 
 def parse_args() -> argparse.Namespace:

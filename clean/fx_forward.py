@@ -37,9 +37,10 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_INPUT = "data/fx_forward"
-DEFAULT_OUTPUT = "macrodata/fx_forward"
+DEFAULT_INPUT = str(DATA_ROOT / "fx_forward")
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "fx_forward")
 
 # Ordered standard tenors for output naming
 STANDARD_TENORS = [

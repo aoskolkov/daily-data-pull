@@ -1,4 +1,4 @@
-﻿"""
+"""
 Clean macro data from World Bank raw downloads.
 
 Produces two outputs per indicator (wide country × year) plus a combined
@@ -39,9 +39,10 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-STORAGE_ROOT = "data"
-DEFAULT_OUTPUT = "macrodata/macro"
+STORAGE_ROOT = str(DATA_ROOT)
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "macro")
 
 # dataset_name -> short column name used in the panel
 INDICATORS: dict[str, str] = {

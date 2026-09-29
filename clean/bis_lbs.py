@@ -20,9 +20,10 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-SRC = Path("data/bis_lbs")
-OUT = Path("macrodata/bis_lbs/bis_lbs_wide")
+SRC = DATA_ROOT / "bis_lbs"
+OUT = MACRODATA_ROOT / "bis_lbs/bis_lbs_wide"
 
 
 def parse_args() -> argparse.Namespace:

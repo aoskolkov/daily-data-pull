@@ -27,10 +27,11 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "ds_bop_quarterly"
-OUT_DIR = ROOT / "macrodata" / "bop_quarterly"
+DATA_DIR = DATA_ROOT / "ds_bop_quarterly"
+OUT_DIR = MACRODATA_ROOT / "bop_quarterly"
 
 # Mnemonic suffix -> output file label
 SUFFIX_TO_LABEL = {

@@ -28,9 +28,10 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
-DEFAULT_STORAGE = "data"
-DEFAULT_OUTPUT  = "macrodata/equity_indices"
+DEFAULT_STORAGE = str(DATA_ROOT)
+DEFAULT_OUTPUT = str(MACRODATA_ROOT / "equity_indices")
 DATASET_NAME    = "ds_equity_indices"
 
 # Datastream equity index mnemonic → ISO 3166-1 alpha-2 country code.

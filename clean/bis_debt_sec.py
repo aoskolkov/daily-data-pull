@@ -35,10 +35,11 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data" / "bis_debt_sec"
-OUT  = ROOT / "macrodata" / "bis_debt_sec"
+DATA = DATA_ROOT / "bis_debt_sec"
+OUT  = MACRODATA_ROOT / "bis_debt_sec"
 
 _ISO2_RE = r'^[A-Z]{2}$'   # strict 2-letter codes; excludes aggregates like 1C, 3P, 4T
 

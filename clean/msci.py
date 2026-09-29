@@ -10,10 +10,11 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from _paths import DATA_ROOT, MACRODATA_ROOT
 
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = ROOT / "data" / "msci_indices"
-OUT_DIR = ROOT / "macrodata" / "msci"
+DATA_DIR = DATA_ROOT / "msci_indices"
+OUT_DIR = MACRODATA_ROOT / "msci"
 
 
 def main(no_csv: bool = False) -> None:
