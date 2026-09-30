@@ -22,6 +22,9 @@ A config-driven pipeline for pulling, storing, and cleaning financial and macroe
 | MSCI country indices | Monthly | MSCI website | 1990–present, 45 countries, USD gross total return + price |
 | VIX family | Daily | FRED | 1990–present (VIX), 2007–present (VXV 3-month) |
 | World Bank macro | Annual | World Bank API | 1960–present, ~180–215 countries |
+| WDI value added by sector | Annual | World Bank API | 1960–2025, ~200 economies; agriculture, industry, manufacturing, services (real, nominal, % of GDP, growth) + employment shares |
+| WDI final consumption | Annual | World Bank API | 1960–2025, ~190 economies; household (incl. NPISH), government, total |
+| IMF quarterly national accounts | Quarterly | IMF data API (QNEA) | 1990-Q1–present, 115 economies (72 seasonally adjusted); GDP, consumption, investment, trade |
 | World Bank fiscal | Annual | World Bank API | 1990–2011 for USD levels (~35 countries); 1990–2024 for expenditure and debt % of GDP (109–159 countries) |
 | IMF BOP/IIP/PIP (CPIS)/DIP (CDIS) | Annual | IMF data API (api.imf.org) | 1980–present (BOP/IIP), 2001– (PIP), 2009– (DIP); BOP includes goods/services/income as credit, debit and net |
 | IMF trade in goods, country totals | Monthly + annual | IMF data API (ITG) | monthly 1957–present (108 economies), annual 1948–present (191); exports FOB, imports CIF, USD |
@@ -182,6 +185,9 @@ clean/                   # one script per output family
   inflation.py           # → macrodata/inflation/
   macro.py               # → macrodata/macro/
   capital_flows.py       # → macrodata/capital_flows/
+  sectors.py             # → macrodata/sectors/      (WDI value added by sector)
+  consumption.py         # → macrodata/consumption/  (WDI final consumption)
+  na_quarterly.py        # → macrodata/na_quarterly/ (IMF quarterly national accounts)
   trade.py               # → macrodata/trade/
   bilateral.py           # → macrodata/bilateral/
   vol.py                 # → macrodata/vol/

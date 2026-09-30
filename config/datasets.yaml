@@ -509,6 +509,126 @@ datasets:
     start: "1960"
     note: "World Bank portfolio equity net inflows, current USD, annual."
 
+  # ── WDI value added by sector + sector employment shares ────────────────────
+  # WDI has four sectors only: agriculture, industry (incl. construction),
+  # manufacturing (a subset of industry) and services. Finer ISIC detail is not in
+  # WDI, and IMF ANEA/QNEA list ISIC value-added codes but publish no data for them
+  # (verified 2026-09-30) — see CLAUDE.md. Suffixes: CD = current US$,
+  # KD = constant 2015 US$, ZS = % of GDP, KD.ZG = annual % growth.
+  - name: wb_sectors
+    source: wb_api
+    wb_source: 2               # World Development Indicators
+    countries: all
+    start: 1960
+    series:
+      # -- value added, constant 2015 US$ (real levels, cross-country comparable)
+      - NV.AGR.TOTL.KD
+      - NV.IND.TOTL.KD
+      - NV.IND.MANF.KD
+      - NV.SRV.TOTL.KD
+      # -- value added, current US$
+      - NV.AGR.TOTL.CD
+      - NV.IND.TOTL.CD
+      - NV.IND.MANF.CD
+      - NV.SRV.TOTL.CD
+      # -- value added, % of GDP (sector shares)
+      - NV.AGR.TOTL.ZS
+      - NV.IND.TOTL.ZS
+      - NV.IND.MANF.ZS
+      - NV.SRV.TOTL.ZS
+      # -- value added, annual % growth
+      - NV.AGR.TOTL.KD.ZG
+      - NV.IND.TOTL.KD.ZG
+      - NV.IND.MANF.KD.ZG
+      - NV.SRV.TOTL.KD.ZG
+      # -- labour productivity (value added per worker, constant 2015 US$)
+      - NV.AGR.EMPL.KD
+      - NV.IND.EMPL.KD
+      - NV.SRV.EMPL.KD
+      # -- employment shares (modelled ILO estimates, 1991-)
+      - SL.AGR.EMPL.ZS
+      - SL.IND.EMPL.ZS
+      - SL.SRV.EMPL.ZS
+      # -- manufacturing composition (% of manufacturing value added, UN source).
+      #    Sparse: ~156 economies ever, only ~14 in the latest year.
+      - NV.MNF.FBTO.ZS.UN
+      - NV.MNF.TXTL.ZS.UN
+      - NV.MNF.CHEM.ZS.UN
+      - NV.MNF.MTRN.ZS.UN
+      - NV.MNF.TECH.ZS.UN
+      - NV.MNF.OTHR.ZS.UN
+    note: >
+      World Bank WDI value added by sector, annual 1960–2025, ~250 economies
+      (including aggregates — filter on is_aggregate). Manufacturing is part of
+      industry, so agriculture + industry + services ≈ GDP at basic prices; the
+      residual is taxes less subsidies on products. Clean: macrodata/sectors/.
+
+  # ── WDI consumption, full set ───────────────────────────────────────────────
+  # Households (incl. NPISH), general government and total final consumption, in
+  # real and nominal levels, as % of GDP and per capita. The older single-indicator
+  # datasets wb_consumption_hh / wb_consumption_govt (current US$ only) stay for
+  # clean/macro.py; this dataset is the fuller panel.
+  - name: wb_consumption
+    source: wb_api
+    wb_source: 2
+    countries: all
+    start: 1960
+    series:
+      - NE.CON.PRVT.KD         # households incl. NPISH, constant 2015 US$
+      - NE.CON.PRVT.CD         # current US$
+      - NE.CON.PRVT.ZS         # % of GDP
+      - NE.CON.PRVT.PC.KD      # per capita, constant 2015 US$
+      - NE.CON.PRVT.KD.ZG      # annual % growth
+      - NE.CON.GOVT.KD
+      - NE.CON.GOVT.CD
+      - NE.CON.GOVT.ZS
+      - NE.CON.GOVT.KD.ZG
+      - NE.CON.TOTL.KD
+      - NE.CON.TOTL.CD
+      - NE.CON.TOTL.ZS
+      - NE.CON.TOTL.KD.ZG
+      - NY.GDP.MKTP.KD         # denominator for ratios computed downstream
+    note: >
+      World Bank WDI final consumption, annual 1960–2025, ~223 economies.
+      WDI has no breakdown by purpose (COICOP) or durability — only by the sector
+      doing the consuming. Clean: macrodata/consumption/.
+
+  # ── IMF quarterly national accounts (QNEA) ──────────────────────────────────
+  # The only quarterly output/consumption data in the repo. Key order:
+  # COUNTRY.INDICATOR.PRICE_TYPE.S_ADJUSTMENT.TYPE_OF_TRANSFORMATION.FREQUENCY.
+  # PRICE_TYPE V = current prices, Q = constant prices; S_ADJUSTMENT SA / NSA;
+  # values in domestic currency (XDC). Household-only consumption (P3_S14) is
+  # reported by ~31 economies; the totals by ~93–115.
+  - name: imf_na_quarterly
+    source: imf
+    dataflow: QNEA
+    start: "1990"
+    incremental_key: date
+    lookback_days: 730         # quarterly national accounts are revised for years
+    dims:
+      COUNTRY: ""
+      INDICATOR: [B1GQ, P3, P3_S13, P3_S14, P3_S1M, P5, P51G, P6, P7]
+      PRICE_TYPE: [V, Q]
+      S_ADJUSTMENT: [SA, NSA]
+      TYPE_OF_TRANSFORMATION: XDC
+      FREQUENCY: Q
+    labels:
+      B1GQ: gdp
+      P3: consumption_total
+      P3_S13: consumption_govt
+      P3_S14: consumption_hh
+      P3_S1M: consumption_hh_npish
+      P5: capital_formation
+      P51G: gfcf
+      P6: exports
+      P7: imports
+    note: >
+      IMF Quarterly National Economic Accounts, 1990-Q1–present, ~115 economies
+      for GDP and ~93–98 for the expenditure aggregates, both seasonally adjusted
+      and unadjusted, in domestic currency. ~240k rows, ~30 s. Note ANEA/QNEA
+      publish NO ISIC value-added detail despite the codelist. Clean:
+      macrodata/na_quarterly/.
+
   # ── Government fiscal aggregates (World Bank) ─────────────────────────────────
   # Note: wb_consumption_govt (NE.CON.GOVT.CD) is the G in C+I+G+NX and covers
   # only ~15-20% of total fiscal expenditure. These GC.* indicators are the
